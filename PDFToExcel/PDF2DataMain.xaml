@@ -1,0 +1,124 @@
+﻿<src:SecuredWindow x:Class="PDFToExcel.PDF2DataMain"
+        xmlns:src="clr-namespace:ABUtils"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:local="clr-namespace:PDFToExcel"
+        xmlns:utils="clr-namespace:ABUtils"
+        xmlns:r="http://schemas.microsoft.com/winfx/2006/xaml/presentation/ribbon"
+        mc:Ignorable="d"
+        Icon="Images/Fatcow-Farm-Fresh-File-extension-pdf.ico"
+        MinHeight="800" MinWidth="1000"
+        Title="Extract PDF Data" WindowState="Maximized">
+    <Window.Resources>
+        <utils:WindowPositionConverter x:Key="WindowPosition" />
+        <local:LineToBrushConverter x:Key="Line2Brush" />
+        <Style x:Key="hdrstyle" TargetType="DataGridColumnHeader">
+            <Setter Property="HorizontalContentAlignment" Value="Center" />
+            <Setter Property="Width" Value="Auto" />
+        </Style>
+        <Style x:Key="TextColor" TargetType="TextBlock">
+            <Setter Property="Foreground" 
+                Value="{Binding LineType, Mode=OneWay, NotifyOnSourceUpdated=True, Converter={StaticResource Line2Brush}}" />
+        </Style>
+    </Window.Resources>
+    <Grid x:Name="grid">
+        <!-- ============================= DATA GRID ========================== -->
+        <DataGrid x:Name="datagrid" Width="Auto" Height="Auto" IsReadOnly="True" Margin="0,117.2,0,30"
+                  SelectionUnit="FullRow" SelectionMode="Extended"
+                  AutoGenerateColumns="False" CanUserAddRows="False" CanUserResizeColumns="True"
+                  CanUserSortColumns="True" ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                  HorizontalGridLinesBrush="#DDD" VerticalGridLinesBrush="#DDD" ItemsSource="{Binding}">
+            <DataGrid.Columns>
+                <DataGridTextColumn Header="Index" HeaderStyle="{StaticResource hdrstyle}" Binding="{Binding Index, Mode=OneWay, UpdateSourceTrigger=PropertyChanged}" ElementStyle="{StaticResource TextColor}"></DataGridTextColumn>
+                <DataGridTextColumn Header="Class" HeaderStyle="{StaticResource hdrstyle}" Binding="{Binding LineType, Mode=OneWay, UpdateSourceTrigger=PropertyChanged}" ElementStyle="{StaticResource TextColor}"></DataGridTextColumn>
+                <DataGridTextColumn Header="Data" HeaderStyle="{StaticResource hdrstyle}" Binding="{Binding LineData, Mode=OneWay, UpdateSourceTrigger=PropertyChanged}" ElementStyle="{StaticResource TextColor}"></DataGridTextColumn>
+                <DataGridTextColumn Header="Page" HeaderStyle="{StaticResource hdrstyle}" Binding="{Binding PageNumber, Mode=OneWay, UpdateSourceTrigger=PropertyChanged}" ElementStyle="{StaticResource TextColor}"></DataGridTextColumn>
+                
+            </DataGrid.Columns>
+
+            <DataGrid.Resources>
+                <Style x:Key="NoFocusDataGridCell" TargetType="{x:Type DataGridCell}" BasedOn="{StaticResource {x:Type DataGridCell}}">
+                    <Setter Property="Focusable"        Value="False" />
+                    <Setter Property="IsTabStop"        Value="False" />
+                    <Setter Property="IsHitTestVisible" Value="False" />
+                </Style>
+                <Style TargetType="{x:Type DataGridCell}">
+                    <Setter Property="BorderBrush" Value="Transparent" />
+                    <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+                </Style>
+            </DataGrid.Resources>
+        </DataGrid>
+        
+        
+        <!-- ============================= STATUS BAR ========================== -->
+        <DockPanel x:Name="statusBar" Width="Auto" Height="30" HorizontalAlignment="Stretch" VerticalAlignment="Bottom" Background="White"  >
+            <Border BorderBrush="#DDD" BorderThickness="2" DockPanel.Dock="Top">
+                <DockPanel HorizontalAlignment="Left">
+                    <TextBlock x:Name="status_tb" Width="Auto" MaxWidth="1000" DockPanel.Dock="Left" FontFamily="Courier New"
+                            VerticalAlignment="Center" FontSize="15" Margin="5,0,0,0"></TextBlock>
+                </DockPanel>
+            </Border>
+        </DockPanel>
+
+        <!-- ============================= RIBBON ========================== -->
+        <r:Ribbon x:Name="pdf2data_rbn" VerticalAlignment="Top" Loaded="ribbon_Loaded" ContextMenu="{x:Null}">
+            <r:Ribbon.ApplicationMenu>
+                <r:RibbonApplicationMenu Loaded="RibbonApplicationMenu_Loaded">
+                    <r:RibbonApplicationMenu.Resources>
+                        <Style TargetType="Popup">
+                            <Setter Property="VerticalOffset" Value="25" />
+                            <Style.Triggers>
+                                <MultiDataTrigger>
+                                    <MultiDataTrigger.Conditions>
+                                        <Condition Binding="{Binding RelativeSource={RelativeSource 
+                                            Mode=FindAncestor, AncestorType=Window}, Path=WindowState}" Value="Normal" />
+                                        <Condition Binding="{Binding RelativeSource={RelativeSource 
+                                            Mode=FindAncestor, AncestorType=Window}, Path=Left, Converter={StaticResource WindowPosition}}" Value="True" />
+                                    </MultiDataTrigger.Conditions>
+                                    <Setter Property="Placement" Value="Left" />
+                                    <Setter Property="HorizontalOffset" Value="-56"/>
+                                </MultiDataTrigger>
+                                <DataTrigger Binding="{Binding RelativeSource={RelativeSource Mode=FindAncestor, AncestorType=Window}, Path=WindowState}" Value="Maximized">
+                                    <Setter Property="Placement" Value="Relative" />
+                                    <Setter Property="HorizontalOffset" Value="60"/>
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </r:RibbonApplicationMenu.Resources>
+                    <r:RibbonApplicationMenuItem x:Name="exit_btn" Header="Exit Program" ImageSource="Images/cross-icon.png" Click="exit_btn_Click"/>
+                </r:RibbonApplicationMenu>
+            </r:Ribbon.ApplicationMenu>
+            <r:RibbonTab Header="Table Extract" ContextMenu="{x:Null}">
+                
+                <r:RibbonGroup Header="Import PDF" x:Name="import_tab" ContextMenu="{x:Null}">
+                    <r:RibbonButton x:Name="openpdf_btn" Label="Open PDF" LargeImageSource="Images/file-extension-pdf-icon.png" 
+                                    ContextMenu="{x:Null}" Click="openpdf_btn_Click"/>
+                </r:RibbonGroup>
+
+                <r:RibbonGroup Header="Table Settings" x:Name="table_tab" ContextMenu="{x:Null}">
+                    <DockPanel Margin="0,10,0,0">
+                        <TextBlock Text="Columns:" Width="65" TextAlignment="Right" VerticalAlignment="Center"></TextBlock>
+                        <r:RibbonComboBox x:Name="numcolumns_cb" SelectionBoxWidth="20" ToolTip="Number of Columns in Table" Margin="6.5,0,0,0" VerticalAlignment="Center">
+                            <r:RibbonGallery x:Name="numcolumns_rg" SelectedValuePath="Content">
+                                <r:RibbonGalleryCategory x:Name="numcolumns_rgc" />
+                            </r:RibbonGallery>
+                        </r:RibbonComboBox>
+                    </DockPanel>
+                    <DockPanel VerticalAlignment="Center">
+                        <TextBlock Text="Page Range:" Width="65" TextAlignment="Right" VerticalAlignment="Center"></TextBlock>
+                        <r:RibbonTextBox x:Name="startpage_tb" ToolTip="Enter start page" Margin="4,0,0,0" VerticalAlignment="Center" 
+                                         TextBoxWidth="30" TextAlignment="Center" PreviewTextInput="page_tb_PreviewTextInput"/>
+                        <TextBlock Text=" - " VerticalAlignment="Center"></TextBlock>
+                        <r:RibbonTextBox x:Name="endpage_tb" ToolTip="Enter end page" VerticalAlignment="Center"
+                                         TextBoxWidth="30" TextAlignment="Center" PreviewTextInput="page_tb_PreviewTextInput"/>
+                    </DockPanel>
+                </r:RibbonGroup>
+
+            </r:RibbonTab>
+            
+            
+        </r:Ribbon>
+    </Grid>
+</src:SecuredWindow>

@@ -4,6 +4,8 @@ using Microsoft.Windows.Controls.Ribbon;
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using System.Data;
+using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Text;
@@ -26,7 +28,7 @@ namespace PDFToExcel
     /// </summary>
     public partial class PDF2DataMain : SecuredWindow
     {
-        ObservableCollection<ClassifiedPDF> PDFTextLines { get; set; }
+        ObservableCollection<PDFTextLine> PDFTextLines { get; set; }
 
 
         public PDF2DataMain()
@@ -52,7 +54,7 @@ namespace PDFToExcel
         private void Initialize()
         {
             grid.DataContext = this;
-            PDFTextLines = new ObservableCollection<ClassifiedPDF>();
+            PDFTextLines = new ObservableCollection<PDFTextLine>();
             datagrid.DataContext = PDFTextLines;
             InitializeStaticComboBoxes();
         }
@@ -73,15 +75,17 @@ namespace PDFToExcel
             {
                 PDFTextLines.Clear();
 
+                int start = string.IsNullOrWhiteSpace(startpage_tb.Text) ? 0 : int.Parse(startpage_tb.Text);
+                int end = string.IsNullOrWhiteSpace(startpage_tb.Text) ? 0 : int.Parse(endpage_tb.Text);
 
                 // custom sort
-                IEnumerable<ClassifiedPDF> tmp = PDFEngine.ClassifyPDF
+                IEnumerable<PDFTextLine> tmp = PDFEngine.ClassifyPDF
                     (openFileDialog.FileName, 
                     int.Parse(numcolumns_rg.SelectedValue.ToString()),
-                    int.Parse(startpage_tb.Text),
-                    int.Parse(endpage_tb.Text));
-                foreach (ClassifiedPDF headerdata in tmp.Where(x => x.LineType == PDFTableClass.header)) PDFTextLines.Add(headerdata);
-                foreach (ClassifiedPDF otherdata in tmp.Where(x => x.LineType != PDFTableClass.header).OrderBy(x => x.LineType).ThenBy(x => x.Index))
+                    start,
+                    end);
+                foreach (PDFTextLine headerdata in tmp.Where(x => x.LineType == PDFTableClass.header)) PDFTextLines.Add(headerdata);
+                foreach (PDFTextLine otherdata in tmp.Where(x => x.LineType != PDFTableClass.header).OrderBy(x => x.LineType).ThenBy(x => x.Index))
                 {
                     PDFTextLines.Add(otherdata);
                 }
@@ -181,6 +185,65 @@ namespace PDFToExcel
             e.Handled = Regex.IsMatch(e.Text, "[^0-9]+");
         }
 
+        private void savexls_btn_Click(object sender, RoutedEventArgs e)
+        {
+            SaveFileDialog saveFileDialog = new SaveFileDialog();
+            saveFileDialog.Title = "Save To Excel";
+            saveFileDialog.AddExtension = true;
+            saveFileDialog.DefaultExt = "xlsx";
+            saveFileDialog.Filter = "XLSX Files|*.xlsx";
+            if (saveFileDialog.ShowDialog() == true)
+            {
+                using (OpenWorkbook owb = new OpenWorkbook(saveFileDialog.FileName))
+                {
+                    if (owb.AddWorksheet("PDF Export"))
+                    {
+                        int row = 1;
+                        if (includehdr_chk.IsChecked ?? true)
+                        {
+                            owb.UpdateRow(row++, PDFTextLines.Where(x => x.LineType == PDFTableClass.header).FirstOrDefault().TextBlocks.Select(x => x.Text).ToArray());
+                        }
+                        IEnumerable<PDFTextLine> classedpdfs = PDFTextLines.Where(x => x.LineType == PDFTableClass.data);
+                        foreach (PDFTextLine classedpdf in classedpdfs)
+                        {
+                            owb.UpdateRow(row++, classedpdf.TextBlocks.Select(x => x.Text).ToArray());
+                        }
+                        owb.ActiveWorksheet.Cells.AutoFitColumns();
+                        owb.Save();
+                        UpdateStatus(StatusType.Success, string.Format("Table Saved. ({0})", System.IO.Path.GetFileName(saveFileDialog.FileName)));
+                    }
+                }
+            }
+        }
+
+        private void setdelete_btn_Click(object sender, RoutedEventArgs e)
+        {
+            foreach (PDFTextLine pdfTL in datagrid.SelectedItems)
+            {
+                PDFTextLines[PDFTextLines.IndexOf(pdfTL)].LineType = PDFTableClass.delete;
+            }
+        }
+
+        private void setheader_btn_Click(object sender, RoutedEventArgs e)
+        {
+            foreach (PDFTextLine pdfTL in datagrid.SelectedItems)
+            {
+                PDFTextLines[PDFTextLines.IndexOf(pdfTL)].LineType = PDFTableClass.header;
+            }
+        }
+
+        private void setdata_btn_Click(object sender, RoutedEventArgs e)
+        {
+            foreach(PDFTextLine pdfTL in datagrid.SelectedItems)
+            {
+                PDFTextLines[PDFTextLines.IndexOf(pdfTL)].LineType = PDFTableClass.data;
+            }
+        }
+
+        private void purgedeleted_btn_Click(object sender, RoutedEventArgs e)
+        {
+            PDFTextLines.RemoveAll<PDFTextLine>(x => x.LineType == PDFTableClass.delete);
+        }
     }
     public class ConsolWriter : TextWriter
     {
@@ -211,9 +274,24 @@ namespace PDFToExcel
         delete
     }
 
+    public static class ExtensionMethods
+    {
+        public static int RemoveAll<T>(
+            this ObservableCollection<T> coll, Func<T, bool> condition)
+        {
+            var itemsToRemove = coll.Where(condition).ToList();
+
+            foreach (var itemToRemove in itemsToRemove)
+            {
+                coll.Remove(itemToRemove);
+            }
+
+            return itemsToRemove.Count;
+        }
+    }
     public class LineToBrushConverter : IValueConverter
     {
-        public object Convert(object value, Type targetType, object parameter, System.Globalization.CultureInfo culture)
+        public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
         {
             switch (value.ToString())
             {
@@ -222,17 +300,39 @@ namespace PDFToExcel
                 case "data":
                     return new SolidColorBrush((Color)ColorConverter.ConvertFromString("#000"));
                 case "delete":
-                    return new SolidColorBrush((Color)ColorConverter.ConvertFromString("#FF7560"));
+                    return new SolidColorBrush((Color)ColorConverter.ConvertFromString("#E00"));
             }
 
 
             return new SolidColorBrush((Color)ColorConverter.ConvertFromString(value.ToString()));
         }
-        public object ConvertBack(object value, Type targetType, object parameter, System.Globalization.CultureInfo culture)
+        public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
         {
             return value;
         }
     }
-
-
+    public class IntegerToBooleanConverter : IValueConverter
+    {
+        public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
+        {
+            return (int)value > 0;
+        }
+        public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
+        {
+            return DependencyProperty.UnsetValue;
+        }
+    }
+    //public class TextBlocks2Text : IValueConverter
+    //{
+    //    public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
+    //    {
+    //        TextBlock[] textblocks = value as TextBlock[];
+    //        StringBuilder sb = new StringBuilder();
+    //        foreach
+    //    }
+    //    public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
+    //    {
+    //        return DependencyProperty.UnsetValue;
+    //    }
+    //}
 }

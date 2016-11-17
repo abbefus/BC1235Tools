@@ -5,9 +5,11 @@ using org.apache.pdfbox.pdmodel.common;
 using org.apache.pdfbox.util;
 using System;
 using System.Collections.Generic;
+using System.ComponentModel;
 using System.Globalization;
 using System.IO;
 using System.Linq;
+using System.Runtime.CompilerServices;
 using System.Text;
 using System.Windows;
 using static ABUtils.FileUtils;
@@ -17,7 +19,6 @@ namespace PDFToExcel
     public static class PDFEngine
     {
         private static readonly Size LETTERSIZE = new Size(612, 792);   // letter page in points
-        private static readonly int LINELIMIT = 5;                      // minimum to create new line
 
         public static IEnumerable<TextLine> ParseToLines(string pdf, int? startpage=null, int? endpage=null)
         {
@@ -32,7 +33,7 @@ namespace PDFToExcel
             for (int i = 0; i < yvals.Length - 1; i++)
             {
                 int diff = Math.Abs(yvals[i + 1] - yvals[i]);
-                if (diff < LINELIMIT)
+                if (diff < PDFMetrics.LINELIMIT)
                 {
                     textchars[yvals[i + 1]].AddRange(textchars[yvals[i]]);
                     continue;
@@ -41,43 +42,31 @@ namespace PDFToExcel
             }
         }
 
-        public static IEnumerable<ClassifiedPDF> ClassifyPDF(string pdf, int numcolumns=1, int? startpage=null, int? endpage=null, string headerstring=null)
+        public static IEnumerable<PDFTextLine> ClassifyPDF(string pdf, int numcolumns=1, int? startpage=null, int? endpage=null, string headerstring=null)
         {
-            bool firstline = true;
-            double tmp;
             startpage = startpage > 0 ? startpage - 1 : null;
-            endpage = endpage > startpage ? endpage - 1 : null;
+            endpage = endpage >= startpage ? endpage : null;
 
 
             foreach (TextLine line in ParseToLines(pdf, startpage, endpage))
             {
-                string linestring = line.ToString();
-                string[] columns = linestring.Split('\t');
-                PDFTableClass tableclass = columns.Length == numcolumns ? PDFTableClass.data : PDFTableClass.delete;
+                TextSequence[] txtseqs = line.GenerateTextSequences().ToArray();
 
-                if (!string.IsNullOrWhiteSpace(headerstring))
+                PDFTableClass tableclass;
+                if (txtseqs.Length > 0)
                 {
-                    if (headerstring.Equals(line)) tableclass = PDFTableClass.header;
-                    firstline = false;
+                     tableclass = txtseqs.Length == numcolumns ? PDFTableClass.data : PDFTableClass.header;
                 }
-                else if (firstline)
+                else
                 {
-                    if (columns.Length == numcolumns) 
-                    {
-                        if (!columns.Any(x => double.TryParse(x, out tmp))) // very weak attempt to check if any can be parsed to double this is data, not a header
-                        {
-                            headerstring = linestring;
-                            tableclass = PDFTableClass.header;
-                            firstline = false;
-                        }
-                        
-                    }
+                    tableclass = PDFTableClass.delete;
                 }
+               
                 
-                yield return new ClassifiedPDF
+                yield return new PDFTextLine
                 {
                     LineType = tableclass,
-                    LineData = linestring,
+                    TextBlocks = txtseqs,
                     PageNumber = line.PageNumber,
                     Index = line.index
                 };
@@ -155,41 +144,122 @@ namespace PDFToExcel
     }
     public class TextLine
     {
-        // public float maxFontSize { get; set; }
-        //public float minFontSize { get; set; }
-        //private Rectangle2D bbox;
         public TextLine(List<TextChar> tc, int i, int lspace)
         {
-            TextChars = tc.OrderBy(x => x.x);
+            TextChars = tc.OrderBy(x => x.x).ToArray();
             PageNumber = tc.LastOrDefault().PageNumber;
             index = i;
             linespaceafter = lspace;
         }
 
-        public IOrderedEnumerable<TextChar> TextChars { get; set; }
+        public TextChar[] TextChars { get; set; }
         public int PageNumber { get; set; }
         public float index { get; set; }
         public int linespaceafter { get; set; }
 
+        public IOrderedEnumerable<TextSequence> GenerateTextSequences(double toleranceAdjustment=0)
+        {
+            double tol = PDFMetrics.CHARSPACING_TOLERANCE - toleranceAdjustment;
+            try
+            {
+                List<TextSequence> seqlist = new List<TextSequence>();
+
+                bool startofsequence = true;
+                TextSequence seq = new TextSequence();
+                StringBuilder sb = new StringBuilder();
+                int count = 0;
+
+                for (int i = 0; i < TextChars.Length; i++)
+                {
+                    count++;
+                    TextChar tc = TextChars[i];
+                    sb.Append(tc.CHAR);
+                    if (startofsequence)
+                    {
+                        seq = new TextSequence { StartX = tc.x };
+                        startofsequence = false;
+                    }
+                    if (tc.spaceafter > (tc.spacewidth + tol))
+                    {
+                        seq.EndX = tc.x + tc.width;
+                        seq.Count = count;
+                        seq.Text = sb.ToString();
+                        seqlist.Add(seq); //yield return seq
+
+                        sb.Clear();
+                        startofsequence = true;
+                        count = 0;
+                    }
+
+                }
+                return seqlist.OrderBy(x => x.StartX);
+            }
+            catch
+            {
+                throw new Exception("TextChars is empty or not populated correctly.");
+            }
+        }
         public override string ToString()
         {
             StringBuilder sb = new StringBuilder();
             foreach (TextChar tc in TextChars)
             {
                 sb.Append(tc.CHAR);
-                if (tc.spaceafter > (tc.spacewidth * 4)) sb.Append('\t');
+                if (tc.spaceafter > (tc.spacewidth + PDFMetrics.CHARSPACING_TOLERANCE))
+                {
+                    int numspaces = (int)Math.Floor(tc.spaceafter / tc.spacewidth);
+                    sb.Append(' ', numspaces);
+                }                
             }
             return sb.ToString();
         }
     }
 
-
-    public class ClassifiedPDF
+    public static class PDFMetrics
     {
-        public PDFTableClass LineType { get; set; }
-        public string LineData { get; set; }
+        public static readonly float CHARSPACING_TOLERANCE = 0.05F;
+        public static readonly short LINELIMIT = 5;
+    }
+
+    public class TextSequence
+    {
+        public float StartX { get; set; }
+        public float EndX { get; set; }
+        public float Width { get { return EndX - StartX; } }
+        public int Count { get; set; }
+        public string Text { get; set; }
+    }
+
+    public class PDFTextLine : INotifyPropertyChanged
+    {
+        private PDFTableClass _lineType;
+        public PDFTableClass LineType
+        {
+            get { return _lineType; }
+            set
+            {
+                _lineType = value;
+                NotifyPropertyChanged();
+            }
+        }
+        //public string LineData { get; set; }
+        public TextSequence[] TextBlocks { get; set; }
         public int PageNumber { get; set; }
         public float Index { get; set; }
+
+        public override string ToString()
+        {
+            return base.ToString();
+        }
+
+        public event PropertyChangedEventHandler PropertyChanged;
+        private void NotifyPropertyChanged([CallerMemberName] string propertyName = "")
+        {
+            if (PropertyChanged != null)
+            {
+                PropertyChanged(this, new PropertyChangedEventArgs(propertyName));
+            }
+        }
     }
     public class FilteredStripper : PDFTextStripper
     {
@@ -200,7 +270,7 @@ namespace PDFToExcel
         private TextPosition lasttp;
 
         public StringBuilder sb;
-        public FilteredStripper()
+        public FilteredStripper() : base()
         {
         }
 
@@ -209,6 +279,7 @@ namespace PDFToExcel
             this.region = region;
             this.pageheight = pageheight;
             base.processPages(pages);
+            AddLastTextPosition();
         }
 
         protected override void writePage() { return; } //prevents exception
@@ -257,6 +328,7 @@ namespace PDFToExcel
                 //------------------------------------------------------------------------------------------
                 posKey = (int)Math.Round(Y, 1, MidpointRounding.ToEven) + (pageheight * newPgNumber);
                 TextChar tc = TextPositionToTextChar(lasttp, nexttp);
+                pageNumber = newPgNumber;
                 tc.PageNumber = newPgNumber;
                 //------------------------------------------------------------------------------------------
 
@@ -271,6 +343,25 @@ namespace PDFToExcel
                 }
             }
 
+        }
+
+        private void AddLastTextPosition()
+        {
+            if (lasttp == null) return;
+            float Y = lasttp.getYDirAdj();
+            int posKey = (int)Math.Round(Y, 1, MidpointRounding.ToEven) + (pageheight * pageNumber);
+            TextChar lasttc = TextPositionToTextChar(lasttp);
+            lasttc.PageNumber = pageNumber;
+
+            lasttp = null;
+            if (textchars.ContainsKey(posKey))
+            {
+                textchars[posKey].Add(lasttc);
+            }
+            else
+            {
+                textchars[posKey] = new List<TextChar>() { lasttc };
+            }
         }
 
         private bool isOutsideRegion(float x, float y)

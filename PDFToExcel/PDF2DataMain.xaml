@@ -14,6 +14,8 @@
     <Window.Resources>
         <utils:WindowPositionConverter x:Key="WindowPosition" />
         <local:LineToBrushConverter x:Key="Line2Brush" />
+        <local:IntegerToBooleanConverter x:Key="Int2Boolean" />
+        <local:TextBlocksToString x:Key="TextBlox2Text" />
         <Style x:Key="hdrstyle" TargetType="DataGridColumnHeader">
             <Setter Property="HorizontalContentAlignment" Value="Center" />
             <Setter Property="Width" Value="Auto" />
@@ -31,11 +33,10 @@
                   CanUserSortColumns="True" ScrollViewer.HorizontalScrollBarVisibility="Disabled"
                   HorizontalGridLinesBrush="#DDD" VerticalGridLinesBrush="#DDD" ItemsSource="{Binding}">
             <DataGrid.Columns>
-                <DataGridTextColumn Header="Index" HeaderStyle="{StaticResource hdrstyle}" Binding="{Binding Index, Mode=OneWay, UpdateSourceTrigger=PropertyChanged}" ElementStyle="{StaticResource TextColor}"></DataGridTextColumn>
-                <DataGridTextColumn Header="Class" HeaderStyle="{StaticResource hdrstyle}" Binding="{Binding LineType, Mode=OneWay, UpdateSourceTrigger=PropertyChanged}" ElementStyle="{StaticResource TextColor}"></DataGridTextColumn>
-                <DataGridTextColumn Header="Data" HeaderStyle="{StaticResource hdrstyle}" Binding="{Binding LineData, Mode=OneWay, UpdateSourceTrigger=PropertyChanged}" ElementStyle="{StaticResource TextColor}"></DataGridTextColumn>
-                <DataGridTextColumn Header="Page" HeaderStyle="{StaticResource hdrstyle}" Binding="{Binding PageNumber, Mode=OneWay, UpdateSourceTrigger=PropertyChanged}" ElementStyle="{StaticResource TextColor}"></DataGridTextColumn>
-                
+                <DataGridTextColumn Header="Index" HeaderStyle="{StaticResource hdrstyle}" Binding="{Binding Index, Mode=OneWay,NotifyOnSourceUpdated=True}" ElementStyle="{StaticResource TextColor}"></DataGridTextColumn>
+                <DataGridTextColumn Header="Class" HeaderStyle="{StaticResource hdrstyle}" Binding="{Binding LineType, Mode=OneWay, NotifyOnSourceUpdated=True}" ElementStyle="{StaticResource TextColor}"></DataGridTextColumn>
+                <DataGridTextColumn Header="Data" HeaderStyle="{StaticResource hdrstyle}" Binding="{Binding TextBlocks, Mode=OneWay, NotifyOnSourceUpdated=True, Converter=TextBlox2Text}" ElementStyle="{StaticResource TextColor}"></DataGridTextColumn>
+                <DataGridTextColumn Header="Page" HeaderStyle="{StaticResource hdrstyle}" Binding="{Binding PageNumber, Mode=OneWay, NotifyOnSourceUpdated=True}" ElementStyle="{StaticResource TextColor}"></DataGridTextColumn>
             </DataGrid.Columns>
 
             <DataGrid.Resources>
@@ -48,6 +49,8 @@
                     <Setter Property="BorderBrush" Value="Transparent" />
                     <Setter Property="FocusVisualStyle" Value="{x:Null}" />
                 </Style>
+                <SolidColorBrush x:Key="{x:Static SystemColors.HighlightBrushKey}" 
+                   Color="SlateGray"/>
             </DataGrid.Resources>
         </DataGrid>
         
@@ -92,12 +95,12 @@
             </r:Ribbon.ApplicationMenu>
             <r:RibbonTab Header="Table Extract" ContextMenu="{x:Null}">
                 
-                <r:RibbonGroup Header="Import PDF" x:Name="import_tab" ContextMenu="{x:Null}">
+                <r:RibbonGroup Header="Import" x:Name="import_grp" ContextMenu="{x:Null}">
                     <r:RibbonButton x:Name="openpdf_btn" Label="Open PDF" LargeImageSource="Images/file-extension-pdf-icon.png" 
                                     ContextMenu="{x:Null}" Click="openpdf_btn_Click"/>
                 </r:RibbonGroup>
 
-                <r:RibbonGroup Header="Table Settings" x:Name="table_tab" ContextMenu="{x:Null}">
+                <r:RibbonGroup Header="Import Settings" x:Name="table_grp" ContextMenu="{x:Null}">
                     <DockPanel Margin="0,10,0,0">
                         <TextBlock Text="Columns:" Width="65" TextAlignment="Right" VerticalAlignment="Center"></TextBlock>
                         <r:RibbonComboBox x:Name="numcolumns_cb" SelectionBoxWidth="20" ToolTip="Number of Columns in Table" Margin="6.5,0,0,0" VerticalAlignment="Center">
@@ -114,6 +117,27 @@
                         <r:RibbonTextBox x:Name="endpage_tb" ToolTip="Enter end page" VerticalAlignment="Center"
                                          TextBoxWidth="30" TextAlignment="Center" PreviewTextInput="page_tb_PreviewTextInput"/>
                     </DockPanel>
+                </r:RibbonGroup>
+
+                <r:RibbonGroup Header="Output" x:Name="output_grp" ContextMenu="{x:Null}">
+                    <r:RibbonButton x:Name="savexls_btn" Label="Export Table" LargeImageSource="Images/export-excel-icon.png" 
+                                    ContextMenu="{x:Null}" Click="savexls_btn_Click"/>
+                    <r:RibbonCheckBox x:Name="includehdr_chk" Label="Include Header" IsChecked="True"/>
+                </r:RibbonGroup>
+                
+                <r:RibbonGroup Header="Table Management" x:Name="tablemanage_grp" ContextMenu="{x:Null}">
+                    
+                    <r:RibbonButton x:Name="setheader_btn" Label="Set As Header" LargeImageSource="Images/table-header-icon.png"
+                                    ContextMenu="{x:Null}" Click="setheader_btn_Click"
+                                    IsEnabled="{Binding ElementName=datagrid, Path=SelectedItems.Count, Converter={StaticResource Int2Boolean}}"/>
+                    <r:RibbonButton x:Name="setdata_btn" Label="Set As Data" LargeImageSource="Images/table-rowadd-icon.png"
+                                    ContextMenu="{x:Null}" Click="setdata_btn_Click"
+                                    IsEnabled="{Binding ElementName=datagrid, Path=SelectedItems.Count, Converter={StaticResource Int2Boolean}}"/>
+                    <r:RibbonButton x:Name="setdelete_btn" Label="Set As Delete" LargeImageSource="Images/table-rowdel-icon.png"
+                                    ContextMenu="{x:Null}" Click="setdelete_btn_Click"
+                                    IsEnabled="{Binding ElementName=datagrid, Path=SelectedItems.Count, Converter={StaticResource Int2Boolean}}"/>
+                    <r:RibbonButton x:Name="purgedeleted_btn" Label="Purge Deleted" LargeImageSource="Images/sweep-table-icon.png"
+                                    ContextMenu="{x:Null}" Click="purgedeleted_btn_Click"/>
                 </r:RibbonGroup>
 
             </r:RibbonTab>

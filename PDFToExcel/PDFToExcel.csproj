@@ -53,7 +53,7 @@
     <ApplicationIcon>Images\Fatcow-Farm-Fresh-File-extension-pdf.ico</ApplicationIcon>
   </PropertyGroup>
   <PropertyGroup>
-    <StartupObject>PDFToExcel.App</StartupObject>
+    <StartupObject>PDFToExcel.Program</StartupObject>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)' == 'Final|AnyCPU'">
     <OutputPath>\\CD1002-F03\GEOMATICS\Utilities\GIS\</OutputPath>
@@ -211,6 +211,7 @@
     </Compile>
     <Compile Include="Classes\ABUtils.cs" />
     <Compile Include="Classes\PDFEngine.cs" />
+    <Compile Include="Classes\XLSXExporter.cs" />
     <Compile Include="PDF2DataMain.xaml.cs">
       <DependentUpon>PDF2DataMain.xaml</DependentUpon>
       <SubType>Code</SubType>
@@ -254,12 +255,6 @@
     <Resource Include="Images\file-extension-xls-icon.png" />
   </ItemGroup>
   <ItemGroup>
-    <Resource Include="Images\table-row-delete-icon.png" />
-  </ItemGroup>
-  <ItemGroup>
-    <Resource Include="Images\table-row-insert-icon.png" />
-  </ItemGroup>
-  <ItemGroup>
     <BootstrapperPackage Include=".NETFramework,Version=v4.5.2">
       <Visible>False</Visible>
       <ProductName>Microsoft .NET Framework 4.5.2 %28x86 and x64%29</ProductName>
@@ -274,12 +269,27 @@
   <ItemGroup>
     <Resource Include="Images\cross-icon.png" />
   </ItemGroup>
+  <ItemGroup>
+    <Resource Include="Images\export-excel-icon.png" />
+  </ItemGroup>
+  <ItemGroup>
+    <Resource Include="Images\table-rowdel-icon.png" />
+  </ItemGroup>
+  <ItemGroup>
+    <Resource Include="Images\table-rowadd-icon.png" />
+  </ItemGroup>
+  <ItemGroup>
+    <Resource Include="Images\sweep-table-icon.png" />
+  </ItemGroup>
+  <ItemGroup>
+    <Resource Include="Images\table-header-icon.png" />
+  </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
-  <!-- To modify your build process, add your task inside one of the targets below and uncomment it. 
-       Other similar extension points exist, see Microsoft.Common.targets.
-  <Target Name="BeforeBuild">
+  <Target Name="AfterResolveReferences">
+    <ItemGroup>
+      <EmbeddedResource Include="@(ReferenceCopyLocalPaths)" Condition="'%(ReferenceCopyLocalPaths.Extension)' == '.dll'">
+        <LogicalName>%(ReferenceCopyLocalPaths.DestinationSubDirectory)%(ReferenceCopyLocalPaths.Filename)%(ReferenceCopyLocalPaths.Extension)</LogicalName>
+      </EmbeddedResource>
+    </ItemGroup>
   </Target>
-  <Target Name="AfterBuild">
-  </Target>
-  -->
 </Project>

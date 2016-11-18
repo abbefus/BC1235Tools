@@ -15,7 +15,6 @@
         <utils:WindowPositionConverter x:Key="WindowPosition" />
         <local:LineToBrushConverter x:Key="Line2Brush" />
         <local:IntegerToBooleanConverter x:Key="Int2Boolean" />
-        <local:TextBlocksToString x:Key="TextBlox2Text" />
         <Style x:Key="hdrstyle" TargetType="DataGridColumnHeader">
             <Setter Property="HorizontalContentAlignment" Value="Center" />
             <Setter Property="Width" Value="Auto" />
@@ -33,10 +32,18 @@
                   CanUserSortColumns="True" ScrollViewer.HorizontalScrollBarVisibility="Disabled"
                   HorizontalGridLinesBrush="#DDD" VerticalGridLinesBrush="#DDD" ItemsSource="{Binding}">
             <DataGrid.Columns>
-                <DataGridTextColumn Header="Index" HeaderStyle="{StaticResource hdrstyle}" Binding="{Binding Index, Mode=OneWay,NotifyOnSourceUpdated=True}" ElementStyle="{StaticResource TextColor}"></DataGridTextColumn>
-                <DataGridTextColumn Header="Class" HeaderStyle="{StaticResource hdrstyle}" Binding="{Binding LineType, Mode=OneWay, NotifyOnSourceUpdated=True}" ElementStyle="{StaticResource TextColor}"></DataGridTextColumn>
-                <DataGridTextColumn Header="Data" HeaderStyle="{StaticResource hdrstyle}" Binding="{Binding TextBlocks, Mode=OneWay, NotifyOnSourceUpdated=True, Converter=TextBlox2Text}" ElementStyle="{StaticResource TextColor}"></DataGridTextColumn>
-                <DataGridTextColumn Header="Page" HeaderStyle="{StaticResource hdrstyle}" Binding="{Binding PageNumber, Mode=OneWay, NotifyOnSourceUpdated=True}" ElementStyle="{StaticResource TextColor}"></DataGridTextColumn>
+                <DataGridTextColumn Header="Index" TextBlock.TextAlignment="Center" HeaderStyle="{StaticResource hdrstyle}" 
+                                    Binding="{Binding Index, Mode=OneWay,NotifyOnSourceUpdated=True}" ElementStyle="{StaticResource TextColor}"/>
+
+                <DataGridTextColumn Header="Class" TextBlock.TextAlignment="Center" HeaderStyle="{StaticResource hdrstyle}" 
+                                    Binding="{Binding LineType, Mode=OneWay, NotifyOnSourceUpdated=True}" ElementStyle="{StaticResource TextColor}"/>
+
+                <DataGridTextColumn Header="Data" TextBlock.TextAlignment="Center" HeaderStyle="{StaticResource hdrstyle}" 
+                                    Binding="{Binding Mode=OneWay, NotifyOnSourceUpdated=True}" ElementStyle="{StaticResource TextColor}"/>
+
+
+                <DataGridTextColumn Header="Page" TextBlock.TextAlignment="Center" HeaderStyle="{StaticResource hdrstyle}" 
+                                    Binding="{Binding PageNumber, Mode=OneWay, NotifyOnSourceUpdated=True}" ElementStyle="{StaticResource TextColor}"/>
             </DataGrid.Columns>
 
             <DataGrid.Resources>

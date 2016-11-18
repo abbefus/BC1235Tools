@@ -79,16 +79,17 @@ namespace PDFToExcel
                 int end = string.IsNullOrWhiteSpace(startpage_tb.Text) ? 0 : int.Parse(endpage_tb.Text);
 
                 // custom sort
-                IEnumerable<PDFTextLine> tmp = PDFEngine.ClassifyPDF
+                //IEnumerable<PDFTextLine> tmp = 
+                    PDFEngine.TabifyPDF
                     (openFileDialog.FileName, 
                     int.Parse(numcolumns_rg.SelectedValue.ToString()),
                     start,
                     end);
-                foreach (PDFTextLine headerdata in tmp.Where(x => x.LineType == PDFTableClass.header)) PDFTextLines.Add(headerdata);
-                foreach (PDFTextLine otherdata in tmp.Where(x => x.LineType != PDFTableClass.header).OrderBy(x => x.LineType).ThenBy(x => x.Index))
-                {
-                    PDFTextLines.Add(otherdata);
-                }
+                //foreach (PDFTextLine headerdata in tmp.Where(x => x.LineType == PDFTableClass.header)) PDFTextLines.Add(headerdata);
+                //foreach (PDFTextLine otherdata in tmp.Where(x => x.LineType != PDFTableClass.header).OrderBy(x => x.LineType).ThenBy(x => x.YIndex))
+                //{
+                //    PDFTextLines.Add(otherdata);
+                //}
 
 
                 if (PDFTextLines.Count > 0)
@@ -201,12 +202,12 @@ namespace PDFToExcel
                         int row = 1;
                         if (includehdr_chk.IsChecked ?? true)
                         {
-                            owb.UpdateRow(row++, PDFTextLines.Where(x => x.LineType == PDFTableClass.header).FirstOrDefault().TextBlocks.Select(x => x.Text).ToArray());
+                            owb.UpdateRow(row++, PDFTextLines.Where(x => x.LineType == PDFTableClass.header).FirstOrDefault().TextSets.Select(x => x.Text).ToArray());
                         }
                         IEnumerable<PDFTextLine> classedpdfs = PDFTextLines.Where(x => x.LineType == PDFTableClass.data);
                         foreach (PDFTextLine classedpdf in classedpdfs)
                         {
-                            owb.UpdateRow(row++, classedpdf.TextBlocks.Select(x => x.Text).ToArray());
+                            owb.UpdateRow(row++, classedpdf.TextSets.Select(x => x.Text).ToArray());
                         }
                         owb.ActiveWorksheet.Cells.AutoFitColumns();
                         owb.Save();
@@ -267,12 +268,6 @@ namespace PDFToExcel
         }
     }
 
-    public enum PDFTableClass
-    {
-        header,
-        data,
-        delete
-    }
 
     public static class ExtensionMethods
     {
@@ -296,11 +291,13 @@ namespace PDFToExcel
             switch (value.ToString())
             {
                 case "header":
-                    return new SolidColorBrush((Color)ColorConverter.ConvertFromString("#FF009BD3"));
-                case "data":
                     return new SolidColorBrush((Color)ColorConverter.ConvertFromString("#000"));
+                case "data":
+                    return new SolidColorBrush((Color)ColorConverter.ConvertFromString("#555"));
                 case "delete":
                     return new SolidColorBrush((Color)ColorConverter.ConvertFromString("#E00"));
+                case "unknown":
+                    return new SolidColorBrush((Color)ColorConverter.ConvertFromString("#DDD"));
             }
 
 
@@ -322,17 +319,5 @@ namespace PDFToExcel
             return DependencyProperty.UnsetValue;
         }
     }
-    //public class TextBlocks2Text : IValueConverter
-    //{
-    //    public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
-    //    {
-    //        TextBlock[] textblocks = value as TextBlock[];
-    //        StringBuilder sb = new StringBuilder();
-    //        foreach
-    //    }
-    //    public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
-    //    {
-    //        return DependencyProperty.UnsetValue;
-    //    }
-    //}
+
 }

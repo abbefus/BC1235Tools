@@ -18,59 +18,65 @@ namespace PDFToExcel
 {
     public static class PDFEngine
     {
-        private static readonly Size LETTERSIZE = new Size(612, 792);   // letter page in points
+        
+        //public static IEnumerable<TextLine> ParseToLines(StrippedPDFPage page)
+        //{
+        //    int[] yvals = textchars.Keys.OrderBy(x => x).ToArray();
 
-        public static IEnumerable<TextLine> ParseToLines(string pdf, int? startpage=null, int? endpage=null)
+        //    for (int i = 0; i < yvals.Length - 1; i++)
+        //    {
+        //        int diff = Math.Abs(yvals[i + 1] - yvals[i]);
+        //        if (diff < PDFMetrics.LINELIMIT)
+        //        {
+        //            textchars[yvals[i + 1]].AddRange(textchars[yvals[i]]);
+        //            continue;
+        //        }
+        //        yield return new TextLine(textchars[yvals[i]], yvals[i], diff);
+        //    }
+        //}
+
+        public static void TabifyPDF(string pdfpath, int numcolumns=1, int? startpage=null, int? endpage=null, string headerstring=null)
         {
-            PDDocument doc = PDDocument.load(pdf);
+            PDDocument doc = PDDocument.load(pdfpath);
             DecryptPDF(ref doc);
 
-            Dictionary<int, List<TextChar>> textchars = RunStripper(ref doc, startpage, endpage); // consider using IOrderedEnumerable
-
-
-            int[] yvals = textchars.Keys.OrderBy(x => x).ToArray();
-
-            for (int i = 0; i < yvals.Length - 1; i++)
-            {
-                int diff = Math.Abs(yvals[i + 1] - yvals[i]);
-                if (diff < PDFMetrics.LINELIMIT)
-                {
-                    textchars[yvals[i + 1]].AddRange(textchars[yvals[i]]);
-                    continue;
-                }
-                yield return new TextLine(textchars[yvals[i]], yvals[i], diff);
-            }
-        }
-
-        public static IEnumerable<PDFTextLine> ClassifyPDF(string pdf, int numcolumns=1, int? startpage=null, int? endpage=null, string headerstring=null)
-        {
+            // turn user-intuitive pages (1-inclusive) into PDFBox intuitive pages (0-exclusive)
             startpage = startpage > 0 ? startpage - 1 : null;
             endpage = endpage >= startpage ? endpage : null;
 
+            StrippedPDF pdf = StripPDF(ref doc, startpage, endpage);
 
-            foreach (TextLine line in ParseToLines(pdf, startpage, endpage))
+
+            
+
+            List<PDFTextLine> lines = new List<PDFTextLine>();
+            int count = 0;
+            foreach (TextLine line in new TextLine[3])//ParseToLines(doc, startpage, endpage))
             {
-                TextSequence[] txtseqs = line.GenerateTextSequences().ToArray();
+                TextSet[] txtsets = line.GenerateTextSets().ToArray();
 
                 PDFTableClass tableclass;
-                if (txtseqs.Length > 0)
-                {
-                     tableclass = txtseqs.Length == numcolumns ? PDFTableClass.data : PDFTableClass.header;
-                }
-                else
-                {
-                    tableclass = PDFTableClass.delete;
-                }
-               
-                
-                yield return new PDFTextLine
+                tableclass = (txtsets.Length > 1 && txtsets.Length <= numcolumns) ? PDFTableClass.data : PDFTableClass.unknown;
+                lines.Add(new PDFTextLine
                 {
                     LineType = tableclass,
-                    TextBlocks = txtseqs,
+                    TextSets = txtsets,
                     PageNumber = line.PageNumber,
-                    Index = line.index
-                };
+                    YIndex = Convert.ToInt32(line.index),
+                    Index = count++
+                });
             }
+
+            // sort out table metrics
+            PDFColumn[] table = new PDFColumn[numcolumns];
+            float margin = lines.Where(x=> x.LineType == PDFTableClass.data).Min(x => x.X);
+
+            for (int i = 0; i < numcolumns; i++)
+            {
+
+            }
+                
+                
         }
         public static bool DecryptPDF(ref PDDocument doc)
         {
@@ -93,22 +99,13 @@ namespace PDFToExcel
                 return true;
             }
         }
-        private static Dictionary<int, List<TextChar>> RunStripper(ref PDDocument doc, int? startpage = null, int? endpage = null, Rectangle2D parseregion = null)
+        private static StrippedPDF StripPDF(ref PDDocument doc, int? startpage = null, int? endpage = null, Rectangle2D parseregion = null)
         {
-            FilteredStripper stripper = new FilteredStripper();
-
             int start = startpage ?? 0;
             int end = endpage ?? doc.getNumberOfPages();
-
             java.util.ArrayList pages = GetPageRange(ref doc, start, end);  //potentially same as cat.getPageNodes().getKids()
-            int pageheight = (int)((PDPage)pages.get(0)).getMediaBox().getHeight(); //same as LETTERSIZE.Height;
-            int pagewidth = (int)((PDPage)pages.get(0)).getMediaBox().getWidth(); //same as LETTERSIZE.Width;
-
-            if (parseregion == null) parseregion = new Rectangle2D.Float(0, 0, pagewidth, pageheight);
-
-            stripper.processPDF(pages, parseregion, pageheight);
-
-            return stripper.textchars;
+            MaskedStripper stripper = new MaskedStripper();
+            return stripper.stripPDF(pages);
         }
 
         private static java.util.ArrayList GetPageRange(ref PDDocument doc, int start, int end)
@@ -129,6 +126,21 @@ namespace PDFToExcel
 
 
     }
+    public class PDFColumn
+    {
+        public float X { get; set; }
+        public float Width { get; set; }
+    }
+    public enum PDFTableClass
+    {
+        header,
+        data,
+        delete,
+        unknown
+    }
+
+
+
     public struct TextChar
     {
         public bool isBold { get; set; }
@@ -157,15 +169,15 @@ namespace PDFToExcel
         public float index { get; set; }
         public int linespaceafter { get; set; }
 
-        public IOrderedEnumerable<TextSequence> GenerateTextSequences(double toleranceAdjustment=0)
+        public IOrderedEnumerable<TextSet> GenerateTextSets(double toleranceAdjustment=0)
         {
             double tol = PDFMetrics.CHARSPACING_TOLERANCE - toleranceAdjustment;
             try
             {
-                List<TextSequence> seqlist = new List<TextSequence>();
+                List<TextSet> seqlist = new List<TextSet>();
 
                 bool startofsequence = true;
-                TextSequence seq = new TextSequence();
+                TextSet seq = new TextSet();
                 StringBuilder sb = new StringBuilder();
                 int count = 0;
 
@@ -176,7 +188,7 @@ namespace PDFToExcel
                     sb.Append(tc.CHAR);
                     if (startofsequence)
                     {
-                        seq = new TextSequence { StartX = tc.x };
+                        seq = new TextSet { StartX = tc.x };
                         startofsequence = false;
                     }
                     if (tc.spaceafter > (tc.spacewidth + tol))
@@ -184,14 +196,22 @@ namespace PDFToExcel
                         seq.EndX = tc.x + tc.width;
                         seq.Count = count;
                         seq.Text = sb.ToString();
+                        seq.SpaceAfter = tc.spaceafter;
+                        seq.SpaceWidth = tc.spacewidth;
                         seqlist.Add(seq); //yield return seq
 
                         sb.Clear();
                         startofsequence = true;
                         count = 0;
                     }
-
                 }
+                TextChar lasttc = TextChars.LastOrDefault();
+                seq.EndX = lasttc.x + lasttc.width;
+                seq.Count = count;
+                seq.Text = sb.ToString();
+                seq.SpaceAfter = lasttc.spaceafter;
+                seq.SpaceWidth = lasttc.spacewidth;
+                seqlist.Add(seq);
                 return seqlist.OrderBy(x => x.StartX);
             }
             catch
@@ -219,15 +239,22 @@ namespace PDFToExcel
     {
         public static readonly float CHARSPACING_TOLERANCE = 0.05F;
         public static readonly short LINELIMIT = 5;
+        public static readonly Size LETTER_SIZE = new Size(612,792);
     }
 
-    public class TextSequence
+    public class TextSet
     {
         public float StartX { get; set; }
         public float EndX { get; set; }
         public float Width { get { return EndX - StartX; } }
         public int Count { get; set; }
         public string Text { get; set; }
+        public float SpaceAfter { get; set; }
+        public float SpaceWidth { get; set; }
+        public int TrailingSpaces
+        {
+            get { return (int)Math.Round(SpaceAfter / SpaceWidth); }
+        }
     }
 
     public class PDFTextLine : INotifyPropertyChanged
@@ -242,14 +269,34 @@ namespace PDFToExcel
                 NotifyPropertyChanged();
             }
         }
-        //public string LineData { get; set; }
-        public TextSequence[] TextBlocks { get; set; }
+        private TextSet[] _textsets;
+        public TextSet[] TextSets
+        {
+            get { return _textsets; }
+            set
+            {
+                _textsets = value;
+                TotalChars = _textsets.Sum(x => x.Count);
+                float sumw = _textsets.Sum(x => x.Width);
+                AverageCharWidth = sumw / TotalChars;
+                X = _textsets.Min(x => x.StartX);
+            }
+        }
+        public int TotalChars { get; private set; }
+        public float AverageCharWidth { get; private set; }
         public int PageNumber { get; set; }
-        public float Index { get; set; }
+        public int YIndex { get; set; }
+        public int Index { get; set; }
+        public float X { get; set; }
 
         public override string ToString()
         {
-            return base.ToString();
+            StringBuilder sb = new StringBuilder();
+            foreach (TextSet ts in _textsets)
+            {
+                sb.Append(ts.Text).Append(' ', ts.TrailingSpaces);
+            }
+            return sb.ToString();
         }
 
         public event PropertyChangedEventHandler PropertyChanged;
@@ -261,26 +308,71 @@ namespace PDFToExcel
             }
         }
     }
-    public class FilteredStripper : PDFTextStripper
+
+    public class StrippedPDF
     {
-        private Rectangle2D region;
-        private int pageheight;
-        private int pageNumber = -1;
-        public Dictionary<int, List<TextChar>> textchars = new Dictionary<int, List<TextChar>>();
+        public StrippedPDFPage[] Pages { get; set; }
+    }
+    public class StrippedPDFPage
+    {
+        public StrippedPDFPage(int pagenumber)
+        {
+            PageNumber = pagenumber;
+        }
+        public int PageNumber { get; set; }
+        public Size PageSize { get; set; }
+        public TextChar[] TextCharLines { get; set; }
+    }
+
+    public class MaskedStripper : PDFTextStripper
+    {
+        public bool UseMask { get; set; }
+        private Rectangle2D Mask { get; set; }
+        public int[] PageNumbers { get; set; }
+
+        private int currentPageNo = -1;
+        private Size currentPageSize;
+        private double heightsum = 0;
+       
+
+
+        private Dictionary<int, List<TextChar>> textchars = new Dictionary<int, List<TextChar>>();
         private TextPosition lasttp;
 
         public StringBuilder sb;
-        public FilteredStripper() : base()
+        public MaskedStripper(Rectangle2D mask=null) : base()
         {
+            UseMask = mask != null;
+            Mask = mask;
         }
 
-        public void processPDF(java.util.List pages, Rectangle2D region, int pageheight)
+        public StrippedPDF stripPDF(java.util.List pages)
         {
-            this.region = region;
-            this.pageheight = pageheight;
+            //if (UseMask && Mask==null)
+            //{
+            int pageheight = (int)((PDPage)pages.get(0)).getMediaBox().getHeight(); //same as LETTERSIZE.Height;
+            int pagewidth = (int)((PDPage)pages.get(0)).getMediaBox().getWidth(); //same as LETTERSIZE.Width;
+            //    Mask = new Rectangle2D.Float(0, 0, pagewidth, pageheight);
+            //}
+            int pagecount = pages.size();
+            PageNumbers = new int[pagecount];
             base.processPages(pages);
+            base.processPage((PDPage)pages.get(0), ((PDPage)pages.get(0)).getContents());
             AddLastTextPosition();
+
+            StrippedPDF pdf = new StrippedPDF();
+            List<StrippedPDFPage> pdfpages = new List<StrippedPDFPage>();
+            for (int i = 0; i < pagecount; i++)
+            {
+                StrippedPDFPage pdfpage = new StrippedPDFPage(PageNumbers[i]);
+                
+            }
+
+
+            return pdf;
         }
+
+
 
         protected override void writePage() { return; } //prevents exception
 
@@ -293,24 +385,30 @@ namespace PDFToExcel
             //caps are all the same 'ABCDEFGHIJKLMNOPRSTUVWXYZ' except 'Q'
             //punctuation creates another situation with ',;' and '"'
 
-            if (lasttp == null) { lasttp = nexttp; return; }
+            if (lasttp == null)
+            {
+                lasttp = nexttp;
+                PageNumbers[0] = getCurrentPageNo();
+                return;
+            }
             int newPgNumber = getCurrentPageNo();
 
             float X = lasttp.getXDirAdj();
             float Y = lasttp.getYDirAdj();
-            if (isOutsideRegion(X, Y)) { lasttp = nexttp; return; }
+            if (UseMask && isOutsideRegion(X, Y)) { lasttp = nexttp; return; }
+
             int posKey;
 
 
 
             // send last character from last page back to past page in correct position
-            if (pageNumber != -1 && pageNumber != newPgNumber)
+            if (currentPageNo != -1 && currentPageNo != newPgNumber)
             {
                 //------------------------------------------------------------------------------------------
-                posKey = (int)Math.Round(Y, 1, MidpointRounding.ToEven) + (pageheight * pageNumber);
+                posKey = (int)Math.Round(Y, 1, MidpointRounding.ToEven) + (792 * currentPageNo);
                 TextChar lasttc = TextPositionToTextChar(lasttp);
-                lasttc.PageNumber = pageNumber;
-                pageNumber = newPgNumber;
+                lasttc.PageNumber = currentPageNo;
+                currentPageNo = newPgNumber;
                 //------------------------------------------------------------------------------------------
 
                 lasttp = nexttp;
@@ -326,9 +424,9 @@ namespace PDFToExcel
             else
             {
                 //------------------------------------------------------------------------------------------
-                posKey = (int)Math.Round(Y, 1, MidpointRounding.ToEven) + (pageheight * newPgNumber);
+                posKey = (int)Math.Round(Y, 1, MidpointRounding.ToEven) + (792 * newPgNumber);
                 TextChar tc = TextPositionToTextChar(lasttp, nexttp);
-                pageNumber = newPgNumber;
+                currentPageNo = newPgNumber;
                 tc.PageNumber = newPgNumber;
                 //------------------------------------------------------------------------------------------
 
@@ -349,9 +447,9 @@ namespace PDFToExcel
         {
             if (lasttp == null) return;
             float Y = lasttp.getYDirAdj();
-            int posKey = (int)Math.Round(Y, 1, MidpointRounding.ToEven) + (pageheight * pageNumber);
+            int posKey = (int)Math.Round(Y, 1, MidpointRounding.ToEven) + (792 * currentPageNo);
             TextChar lasttc = TextPositionToTextChar(lasttp);
-            lasttc.PageNumber = pageNumber;
+            lasttc.PageNumber = currentPageNo;
 
             lasttp = null;
             if (textchars.ContainsKey(posKey))
@@ -366,8 +464,8 @@ namespace PDFToExcel
 
         private bool isOutsideRegion(float x, float y)
         {
-            return x < region.getMinX() || x > region.getMaxX() ||
-                    y < region.getMinY() || y > region.getMaxY();
+            return x < Mask.getMinX() || x > Mask.getMaxX() ||
+                    y < Mask.getMinY() || y > Mask.getMaxY();
         }
         private TextChar TextPositionToTextChar(TextPosition tp, TextPosition nexttp = null)
         {

@@ -2,6 +2,7 @@
 using OfficeOpenXml;
 using org.apache.pdfbox.pdmodel;
 using org.apache.pdfbox.pdmodel.common;
+using org.apache.pdfbox.pdmodel.graphics;
 using org.apache.pdfbox.util;
 using System;
 using System.Collections.Generic;
@@ -46,30 +47,30 @@ namespace PDFToExcel
 
             StrippedPDF pdf = StripPDF(ref doc, startpage, endpage);
 
-
+            doc.close();
             
 
-            List<PDFTextLine> lines = new List<PDFTextLine>();
+            List<ClassifiedPDFRow> lines = new List<ClassifiedPDFRow>();
             int count = 0;
             foreach (TextLine line in new TextLine[3])//ParseToLines(doc, startpage, endpage))
             {
                 TextSet[] txtsets = line.GenerateTextSets().ToArray();
 
-                PDFTableClass tableclass;
-                tableclass = (txtsets.Length > 1 && txtsets.Length <= numcolumns) ? PDFTableClass.data : PDFTableClass.unknown;
-                lines.Add(new PDFTextLine
+                PDFRowClass tableclass;
+                tableclass = (txtsets.Length > 1 && txtsets.Length <= numcolumns) ? PDFRowClass.data : PDFRowClass.unknown;
+                lines.Add(new ClassifiedPDFRow
                 {
                     LineType = tableclass,
                     TextSets = txtsets,
                     PageNumber = line.PageNumber,
-                    YIndex = Convert.ToInt32(line.index),
+                    YIndex = Convert.ToInt32(line.Index),
                     Index = count++
                 });
             }
 
             // sort out table metrics
             PDFColumn[] table = new PDFColumn[numcolumns];
-            float margin = lines.Where(x=> x.LineType == PDFTableClass.data).Min(x => x.X);
+            float margin = lines.Where(x=> x.LineType == PDFRowClass.data).Min(x => x.X);
 
             for (int i = 0; i < numcolumns; i++)
             {
@@ -112,16 +113,23 @@ namespace PDFToExcel
         {
             java.util.ArrayList pages = new java.util.ArrayList();
 
-            if (end == 0) end = doc.getNumberOfPages() - 1;
-            PDDocumentCatalog cat = doc.getDocumentCatalog();
-            java.util.List catpages = cat.getAllPages();
-
-            for (int i = start; i < end; i++)
+            try
             {
-                pages.add(catpages.get(i));
-            }
+                PDDocumentCatalog cat = doc.getDocumentCatalog();
+                java.util.List catpages = cat.getAllPages();
 
-            return pages;
+                for (int i = start; i < end; i++)
+                {
+                    pages.add(catpages.get(i));
+                }
+
+                return pages;
+            }
+            catch
+            {
+                throw new ArgumentOutOfRangeException("Page range not found in document");
+            }
+            
         }
 
 
@@ -131,7 +139,7 @@ namespace PDFToExcel
         public float X { get; set; }
         public float Width { get; set; }
     }
-    public enum PDFTableClass
+    public enum PDFRowClass
     {
         header,
         data,
@@ -140,34 +148,26 @@ namespace PDFToExcel
     }
 
 
-
     public struct TextChar
     {
-        public bool isBold { get; set; }
-        public bool isItalic { get; set; }
-        public float x { get; set; }
-        public float width { get; set; }
-        public float spaceafter { get; set; } // finer data can be used to construct more rules
-        public float spacewidth { get; set; }
-        public char CHAR { get; set; }
-        public string font { get; set; }
-        public float fontsize { get; set; }
-        public int PageNumber { get; set; }
+        public bool IsBold { get; set; }
+        public bool IsItalic { get; set; }
+        public float X { get; set; }
+        public float Y { get; set; }
+        public float Width { get; set; }
+        public float SpaceAfter { get; set; }
+        public float SpaceWidth { get; set; }
+        public char Char { get; set; }
+        public string Font { get; set; }
+        public float FontSize { get; set; }
+        //public int PageNumber { get; set; }
     }
     public class TextLine
     {
-        public TextLine(List<TextChar> tc, int i, int lspace)
-        {
-            TextChars = tc.OrderBy(x => x.x).ToArray();
-            PageNumber = tc.LastOrDefault().PageNumber;
-            index = i;
-            linespaceafter = lspace;
-        }
-
         public TextChar[] TextChars { get; set; }
         public int PageNumber { get; set; }
-        public float index { get; set; }
-        public int linespaceafter { get; set; }
+        public float Index { get; set; }
+        public int LinespaceAfter { get; set; }
 
         public IOrderedEnumerable<TextSet> GenerateTextSets(double toleranceAdjustment=0)
         {
@@ -185,19 +185,19 @@ namespace PDFToExcel
                 {
                     count++;
                     TextChar tc = TextChars[i];
-                    sb.Append(tc.CHAR);
+                    sb.Append(tc.Char);
                     if (startofsequence)
                     {
-                        seq = new TextSet { StartX = tc.x };
+                        seq = new TextSet { StartX = tc.X };
                         startofsequence = false;
                     }
-                    if (tc.spaceafter > (tc.spacewidth + tol))
+                    if (tc.SpaceAfter > (tc.SpaceWidth + tol))
                     {
-                        seq.EndX = tc.x + tc.width;
+                        seq.EndX = tc.X + tc.Width;
                         seq.Count = count;
                         seq.Text = sb.ToString();
-                        seq.SpaceAfter = tc.spaceafter;
-                        seq.SpaceWidth = tc.spacewidth;
+                        seq.SpaceAfter = tc.SpaceAfter;
+                        seq.SpaceWidth = tc.SpaceWidth;
                         seqlist.Add(seq); //yield return seq
 
                         sb.Clear();
@@ -206,11 +206,11 @@ namespace PDFToExcel
                     }
                 }
                 TextChar lasttc = TextChars.LastOrDefault();
-                seq.EndX = lasttc.x + lasttc.width;
+                seq.EndX = lasttc.X + lasttc.Width;
                 seq.Count = count;
                 seq.Text = sb.ToString();
-                seq.SpaceAfter = lasttc.spaceafter;
-                seq.SpaceWidth = lasttc.spacewidth;
+                seq.SpaceAfter = lasttc.SpaceAfter;
+                seq.SpaceWidth = lasttc.SpaceWidth;
                 seqlist.Add(seq);
                 return seqlist.OrderBy(x => x.StartX);
             }
@@ -224,10 +224,10 @@ namespace PDFToExcel
             StringBuilder sb = new StringBuilder();
             foreach (TextChar tc in TextChars)
             {
-                sb.Append(tc.CHAR);
-                if (tc.spaceafter > (tc.spacewidth + PDFMetrics.CHARSPACING_TOLERANCE))
+                sb.Append(tc.Char);
+                if (tc.SpaceAfter > (tc.SpaceWidth + PDFMetrics.CHARSPACING_TOLERANCE))
                 {
-                    int numspaces = (int)Math.Floor(tc.spaceafter / tc.spacewidth);
+                    int numspaces = (int)Math.Floor(tc.SpaceAfter / tc.SpaceWidth);
                     sb.Append(' ', numspaces);
                 }                
             }
@@ -235,12 +235,7 @@ namespace PDFToExcel
         }
     }
 
-    public static class PDFMetrics
-    {
-        public static readonly float CHARSPACING_TOLERANCE = 0.05F;
-        public static readonly short LINELIMIT = 5;
-        public static readonly Size LETTER_SIZE = new Size(612,792);
-    }
+
 
     public class TextSet
     {
@@ -256,11 +251,10 @@ namespace PDFToExcel
             get { return (int)Math.Round(SpaceAfter / SpaceWidth); }
         }
     }
-
-    public class PDFTextLine : INotifyPropertyChanged
+    public class ClassifiedPDFRow : INotifyPropertyChanged
     {
-        private PDFTableClass _lineType;
-        public PDFTableClass LineType
+        private PDFRowClass _lineType;
+        public PDFRowClass LineType
         {
             get { return _lineType; }
             set
@@ -321,25 +315,26 @@ namespace PDFToExcel
         }
         public int PageNumber { get; set; }
         public Size PageSize { get; set; }
-        public TextChar[] TextCharLines { get; set; }
+
+        public TextChar[][] TextCharLines { get; set; }
+
+
     }
+
+
+
 
     public class MaskedStripper : PDFTextStripper
     {
         public bool UseMask { get; set; }
         private Rectangle2D Mask { get; set; }
-        public int[] PageNumbers { get; set; }
 
-        private int currentPageNo = -1;
-        private Size currentPageSize;
-        private double heightsum = 0;
-       
-
-
-        private Dictionary<int, List<TextChar>> textchars = new Dictionary<int, List<TextChar>>();
+        //private List<TextChar> textChars = new List<TextChar>();
+        private List<TextChar>[] tcPages;
         private TextPosition lasttp;
+        private int lastPageNo = -1;
 
-        public StringBuilder sb;
+
         public MaskedStripper(Rectangle2D mask=null) : base()
         {
             UseMask = mask != null;
@@ -348,35 +343,53 @@ namespace PDFToExcel
 
         public StrippedPDF stripPDF(java.util.List pages)
         {
-            //if (UseMask && Mask==null)
-            //{
-            int pageheight = (int)((PDPage)pages.get(0)).getMediaBox().getHeight(); //same as LETTERSIZE.Height;
-            int pagewidth = (int)((PDPage)pages.get(0)).getMediaBox().getWidth(); //same as LETTERSIZE.Width;
-            //    Mask = new Rectangle2D.Float(0, 0, pagewidth, pageheight);
-            //}
             int pagecount = pages.size();
-            PageNumbers = new int[pagecount];
+            tcPages = new List<TextChar>[pagecount];
             base.processPages(pages);
-            base.processPage((PDPage)pages.get(0), ((PDPage)pages.get(0)).getContents());
-            AddLastTextPosition();
+            pages.clear();
+            pages = null;
+            AddEODTextPosition();
 
             StrippedPDF pdf = new StrippedPDF();
             List<StrippedPDFPage> pdfpages = new List<StrippedPDFPage>();
             for (int i = 0; i < pagecount; i++)
             {
-                StrippedPDFPage pdfpage = new StrippedPDFPage(PageNumbers[i]);
-                
+                StrippedPDFPage pdfpage = new StrippedPDFPage(i);
+                pdfpage.PageSize = UseMask ?
+                    new Size
+                    {
+                        Width = Mask.getWidth(),
+                        Height = Mask.getHeight()
+                    } :
+                    new Size
+                    {
+                        Width = (int)((PDPage)pages.get(i)).getMediaBox().getWidth(),
+                        Height = (int)((PDPage)pages.get(i)).getMediaBox().getHeight()
+                    };
+                pdfpage.TextCharLines = tcPages[pdfpage.PageNumber].
+                    GroupBy(tc => tc.Y).        // group into lines by y position
+                    Select(grp => grp.OrderBy(x => x.X).ToArray()). // order group by x position
+                    OrderBy(x => x.FirstOrDefault().Y).ToArray();   // order lines by y position
+                pdfpages.Add(pdfpage);
             }
-
+            pdf.Pages = pdfpages.ToArray();
 
             return pdf;
         }
+        private void AddEODTextPosition()
+        {
+            if (lasttp == null) return;
+            float Y = lasttp.getYDirAdj();
+            TextChar lasttc = TextPositionToTextChar(lasttp);
+            lasttc.Y = (float)Math.Round(Y, 0, MidpointRounding.ToEven);
+            tcPages[lastPageNo].Add(lasttc);
+
+            lasttp = null;
+            lastPageNo = -1;
+        }
 
 
-
-        protected override void writePage() { return; } //prevents exception
-
-        protected override void processTextPosition(TextPosition nexttp)
+        protected override void processTextPosition(TextPosition tp)
         {
             //y position and fontsize are dependent on the characters within the string of text
             //for example, a 'pqyg' increases the 'adjusted' y position relative to an 'oweruaszxcvnm' because of the tails
@@ -385,84 +398,35 @@ namespace PDFToExcel
             //caps are all the same 'ABCDEFGHIJKLMNOPRSTUVWXYZ' except 'Q'
             //punctuation creates another situation with ',;' and '"'
 
-            if (lasttp == null)
-            {
-                lasttp = nexttp;
-                PageNumbers[0] = getCurrentPageNo();
-                return;
-            }
-            int newPgNumber = getCurrentPageNo();
+            if (lasttp == null) { lasttp = tp; return; }
 
             float X = lasttp.getXDirAdj();
             float Y = lasttp.getYDirAdj();
-            if (UseMask && isOutsideRegion(X, Y)) { lasttp = nexttp; return; }
 
-            int posKey;
-
+            if (UseMask && isOOB(X, Y)) { lasttp = tp; return; }
 
 
-            // send last character from last page back to past page in correct position
-            if (currentPageNo != -1 && currentPageNo != newPgNumber)
+            int newPgNumber = getCurrentPageNo();
+
+            if (lastPageNo != -1 && lastPageNo != newPgNumber) //if new page
             {
-                //------------------------------------------------------------------------------------------
-                posKey = (int)Math.Round(Y, 1, MidpointRounding.ToEven) + (792 * currentPageNo);
                 TextChar lasttc = TextPositionToTextChar(lasttp);
-                lasttc.PageNumber = currentPageNo;
-                currentPageNo = newPgNumber;
-                //------------------------------------------------------------------------------------------
-
-                lasttp = nexttp;
-                if (textchars.ContainsKey(posKey))
-                {
-                    textchars[posKey].Add(lasttc);
-                }
-                else
-                {
-                    textchars[posKey] = new List<TextChar>() { lasttc };
-                }
+                lasttc.Y = (float)Math.Round(Y, 0, MidpointRounding.ToEven);
+                tcPages[lastPageNo].Add(lasttc);
+                lastPageNo = newPgNumber;
             }
-            else
+            else // if same page or start
             {
-                //------------------------------------------------------------------------------------------
-                posKey = (int)Math.Round(Y, 1, MidpointRounding.ToEven) + (792 * newPgNumber);
-                TextChar tc = TextPositionToTextChar(lasttp, nexttp);
-                currentPageNo = newPgNumber;
-                tc.PageNumber = newPgNumber;
-                //------------------------------------------------------------------------------------------
-
-                lasttp = nexttp;
-                if (textchars.ContainsKey(posKey))
-                {
-                    textchars[posKey].Add(tc);
-                }
-                else
-                {
-                    textchars[posKey] = new List<TextChar>() { tc };
-                }
+                TextChar tc = TextPositionToTextChar(lasttp, tp);
+                lastPageNo = newPgNumber;
+                tc.Y = (float)Math.Round(Y, 0, MidpointRounding.ToEven);
+                tcPages[newPgNumber].Add(tc);
             }
-
+            lasttp = tp;
         }
 
-        private void AddLastTextPosition()
-        {
-            if (lasttp == null) return;
-            float Y = lasttp.getYDirAdj();
-            int posKey = (int)Math.Round(Y, 1, MidpointRounding.ToEven) + (792 * currentPageNo);
-            TextChar lasttc = TextPositionToTextChar(lasttp);
-            lasttc.PageNumber = currentPageNo;
 
-            lasttp = null;
-            if (textchars.ContainsKey(posKey))
-            {
-                textchars[posKey].Add(lasttc);
-            }
-            else
-            {
-                textchars[posKey] = new List<TextChar>() { lasttc };
-            }
-        }
-
-        private bool isOutsideRegion(float x, float y)
+        private bool isOOB(float x, float y)
         {
             return x < Mask.getMinX() || x > Mask.getMaxX() ||
                     y < Mask.getMinY() || y > Mask.getMaxY();
@@ -472,39 +436,58 @@ namespace PDFToExcel
             if (tp.getCharacter().Length != 1) throw new IndexOutOfRangeException("Textposition does not contain 1 character.");
 
             TextChar tc = new TextChar();
-            tc.CHAR = tp.getCharacter()[0];
-            tc.x = tp.getXDirAdj();
-            tc.width = tp.getWidthDirAdj();
-            tc.spaceafter = nexttp != null ? Math.Max(0, nexttp.getXDirAdj() - (tp.getXDirAdj() + tp.getWidthDirAdj())) : 0;
-            tc.spacewidth = tp.getWidthOfSpace();
+            tc.Char = tp.getCharacter()[0];
+            tc.X = tp.getXDirAdj();
+            tc.Width = tp.getWidthDirAdj();
+            tc.SpaceAfter = nexttp != null ? Math.Max(0, nexttp.getXDirAdj() - (tp.getXDirAdj() + tp.getWidthDirAdj())) : 0;
+            tc.SpaceWidth = tp.getWidthOfSpace();
 
-            tc.font = tp.getFont().getBaseFont();
-            tc.fontsize = tp.getFontSizeInPt();
+            tc.Font = tp.getFont().getBaseFont();
+            tc.FontSize = tp.getFontSizeInPt();
 
             try
             {
                 int[] flags = GetBits(tp.getFont().getFontDescriptor().getFlags());
-                tc.isBold = findBold(tp, flags);
-                tc.isItalic = findItalics(tp, flags);
+                tc.IsBold = findBold(tp, flags, getGraphicsState());
+                tc.IsItalic = findItalics(tp, flags);
             }
             catch { }
 
             return tc;
         }
-        private int[] GetBits(int flags)
+
+        private static java.util.ArrayList GetPageRange(ref PDDocument doc, int start, int end)
+        {
+            java.util.ArrayList pages = new java.util.ArrayList();
+
+            try
+            {
+                PDDocumentCatalog cat = doc.getDocumentCatalog();
+                java.util.List catpages = cat.getAllPages();
+
+                for (int i = start; i < end; i++)
+                {
+                    pages.add(catpages.get(i));
+                }
+
+                return pages;
+            }
+            catch
+            {
+                throw new ArgumentOutOfRangeException("Page range not found in document");
+            }
+
+        }
+        private static int[] GetBits(int flags)
         {
             string bitstring = Convert.ToString(flags, 2) + "0";
             return bitstring.PadLeft(32, '0').Select(x => int.Parse(x.ToString())).ToArray().Reverse().ToArray();
         }
-        private bool findBold(TextPosition tp, int[] flags)
+        private static bool findBold(TextPosition tp, int[] flags, PDGraphicsState graphicsstate)
         {
             float fontweight = tp.getFont().getFontDescriptor().getFontWeight();
-            double linewidth = getGraphicsState().getLineWidth();
-            int renderingmode = getGraphicsState().getTextState().getRenderingMode();
-            Matrix matrix = getGraphicsState().getCurrentTransformationMatrix();
-            Matrix matrix2 = getTextMatrix();
-            PDMatrix matrix3 = getGraphicsState().getTextState().getFont().getFontMatrix();
-            PDRectangle bbox = tp.getFont().getFontDescriptor().getFontBoundingBox();
+            int renderingmode = graphicsstate.getTextState().getRenderingMode();
+            
 
             bool isbold1 = fontweight >= 700;
             bool isbold2 = flags[19] == 1;
@@ -512,31 +495,70 @@ namespace PDFToExcel
             bool isbold4 = tp.getFont().getBaseFont().ToLower().Contains("bold");
             return isbold1 || isbold2 || isbold3 || isbold4;
         }
-        private bool findItalics(TextPosition tp, int[] flags)
+        private static bool findItalics(TextPosition tp, int[] flags)
         {
             bool isitalic1 = tp.getFont().getFontDescriptor().getItalicAngle() != 0;
             bool isitalic2 = flags[7] == 1;
             return isitalic1 || isitalic2;
         }
+
+        protected override void writePage() { return; } //prevents exception
     }
 
-
-    //for storing pdf file information (Summarize only)
-    public struct PDFFile
+    public static class PDFMetrics
     {
-        public string name { get; set; }
-        public long size { get; set; }
-        public int numpages { get; set; }
-        public bool isOCR { get; set; }
-        public int numchars { get; set; }
-
+        public static readonly float CHARSPACING_TOLERANCE = 0.05F;
+        public static readonly short LINELIMIT = 5;
+        public static readonly Size LETTER_SIZE = new Size(612, 792);
     }
 
 }
 
 
 
+//double linewidth = graphicsstate.getLineWidth();
+//Matrix matrix = graphicsstate.getCurrentTransformationMatrix();
+//Matrix matrix2 = getTextMatrix();
+//PDMatrix matrix3 = getGraphicsState().getTextState().getFont().getFontMatrix();
+//PDRectangle bbox = tp.getFont().getFontDescriptor().getFontBoundingBox();
 
+//protected override void processTextPosition(TextPosition tp)
+//{
+//    //y position and fontsize are dependent on the characters within the string of text
+//    //for example, a 'pqyg' increases the 'adjusted' y position relative to an 'oweruaszxcvnm' because of the tails
+//    //and vice versa for 'tidfhklb'
+//    //note 'j' goes in both directions
+//    //caps are all the same 'ABCDEFGHIJKLMNOPRSTUVWXYZ' except 'Q'
+//    //punctuation creates another situation with ',;' and '"'
+
+//    if (lasttp == null) { lasttp = tp; return; }
+
+//    float X = lasttp.getXDirAdj();
+//    float Y = lasttp.getYDirAdj();
+
+//    if (UseMask && isOOB(X, Y)) { lasttp = tp; return; }
+
+
+//    int newPgNumber = getCurrentPageNo();
+
+//    if (lastPageNo != -1 && lastPageNo != newPgNumber) //if new page
+//    {
+//        TextChar lasttc = TextPositionToTextChar(lasttp);
+//        lasttc.PageNumber = lastPageNo;
+//        lasttc.Y = (float)Math.Round(Y, 0, MidpointRounding.ToEven);
+//        lastPageNo = newPgNumber;
+//        textChars.Add(lasttc);
+//    }
+//    else // if same page or start
+//    {
+//        TextChar tc = TextPositionToTextChar(lasttp, tp);
+//        lastPageNo = newPgNumber;
+//        tc.PageNumber = newPgNumber;
+//        tc.Y = (float)Math.Round(Y, 0, MidpointRounding.ToEven);
+//        textChars.Add(tc);
+//    }
+//    lasttp = tp;
+}   // main processor
 
 //public class TurbidityDataTypeI
 //{

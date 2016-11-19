@@ -28,7 +28,7 @@ namespace PDFToExcel
     /// </summary>
     public partial class PDF2DataMain : SecuredWindow
     {
-        ObservableCollection<PDFTextLine> PDFTextLines { get; set; }
+        ObservableCollection<ClassifiedPDFRow> PDFTextLines { get; set; }
 
 
         public PDF2DataMain()
@@ -54,7 +54,7 @@ namespace PDFToExcel
         private void Initialize()
         {
             grid.DataContext = this;
-            PDFTextLines = new ObservableCollection<PDFTextLine>();
+            PDFTextLines = new ObservableCollection<ClassifiedPDFRow>();
             datagrid.DataContext = PDFTextLines;
             InitializeStaticComboBoxes();
         }
@@ -202,10 +202,10 @@ namespace PDFToExcel
                         int row = 1;
                         if (includehdr_chk.IsChecked ?? true)
                         {
-                            owb.UpdateRow(row++, PDFTextLines.Where(x => x.LineType == PDFTableClass.header).FirstOrDefault().TextSets.Select(x => x.Text).ToArray());
+                            owb.UpdateRow(row++, PDFTextLines.Where(x => x.LineType == PDFRowClass.header).FirstOrDefault().TextSets.Select(x => x.Text).ToArray());
                         }
-                        IEnumerable<PDFTextLine> classedpdfs = PDFTextLines.Where(x => x.LineType == PDFTableClass.data);
-                        foreach (PDFTextLine classedpdf in classedpdfs)
+                        IEnumerable<ClassifiedPDFRow> classedpdfs = PDFTextLines.Where(x => x.LineType == PDFRowClass.data);
+                        foreach (ClassifiedPDFRow classedpdf in classedpdfs)
                         {
                             owb.UpdateRow(row++, classedpdf.TextSets.Select(x => x.Text).ToArray());
                         }
@@ -219,31 +219,31 @@ namespace PDFToExcel
 
         private void setdelete_btn_Click(object sender, RoutedEventArgs e)
         {
-            foreach (PDFTextLine pdfTL in datagrid.SelectedItems)
+            foreach (ClassifiedPDFRow pdfTL in datagrid.SelectedItems)
             {
-                PDFTextLines[PDFTextLines.IndexOf(pdfTL)].LineType = PDFTableClass.delete;
+                PDFTextLines[PDFTextLines.IndexOf(pdfTL)].LineType = PDFRowClass.delete;
             }
         }
 
         private void setheader_btn_Click(object sender, RoutedEventArgs e)
         {
-            foreach (PDFTextLine pdfTL in datagrid.SelectedItems)
+            foreach (ClassifiedPDFRow pdfTL in datagrid.SelectedItems)
             {
-                PDFTextLines[PDFTextLines.IndexOf(pdfTL)].LineType = PDFTableClass.header;
+                PDFTextLines[PDFTextLines.IndexOf(pdfTL)].LineType = PDFRowClass.header;
             }
         }
 
         private void setdata_btn_Click(object sender, RoutedEventArgs e)
         {
-            foreach(PDFTextLine pdfTL in datagrid.SelectedItems)
+            foreach(ClassifiedPDFRow pdfTL in datagrid.SelectedItems)
             {
-                PDFTextLines[PDFTextLines.IndexOf(pdfTL)].LineType = PDFTableClass.data;
+                PDFTextLines[PDFTextLines.IndexOf(pdfTL)].LineType = PDFRowClass.data;
             }
         }
 
         private void purgedeleted_btn_Click(object sender, RoutedEventArgs e)
         {
-            PDFTextLines.RemoveAll<PDFTextLine>(x => x.LineType == PDFTableClass.delete);
+            PDFTextLines.RemoveAll<ClassifiedPDFRow>(x => x.LineType == PDFRowClass.delete);
         }
     }
     public class ConsolWriter : TextWriter

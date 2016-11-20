@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Data;
+using System.Drawing;
 using System.Globalization;
 using System.IO;
 using System.Linq;
@@ -283,6 +284,24 @@ namespace PDFToExcel
 
             return itemsToRemove.Count;
         }
+
+        public static LineIntersectType HorizontalIntersect(this RectangleF rect, RectangleF other)
+        {
+            if (rect.Left < other.Left && rect.Right > other.Right) return LineIntersectType.Contains;
+            if (rect.Left > other.Left && rect.Right < other.Right) return LineIntersectType.Within;
+            if (rect.Left < other.Left && rect.Right > other.Left) return LineIntersectType.ContainsStart;
+            if (rect.Left < other.Right && rect.Right > other.Right) return LineIntersectType.ContainsEnd;
+
+            return LineIntersectType.DoesNotIntersect;
+        }
+    }
+    public enum LineIntersectType
+    {
+        Contains,
+        Within,
+        ContainsStart,
+        ContainsEnd,
+        DoesNotIntersect
     }
     public class LineToBrushConverter : IValueConverter
     {

@@ -537,53 +537,64 @@ namespace PDFToExcel
 
             return TLList.ToArray();
         }
-        private static TextLine MergeTextLines(TextLine tl1, TextLine tl2)
+        private static TextLine MergeTextLines(TextLine topline, TextLine bottomline)
         {
             // first, create a spacechar with the same metrics as tl1 to separate tl1 and tl2
-            TextChar sc = tl1.TextChars.Where(x => x.Char == ' ').FirstOrDefault();
+            TextChar sc = topline.TextChars.Where(x => x.Char == ' ').FirstOrDefault();
             if (sc.Char != '|')
             {
-                sc = tl1.TextChars.FirstOrDefault();
+                sc = topline.TextChars.FirstOrDefault();
                 sc.Char = '|';
                 sc.Box = new RectangleF(sc.Box.X, sc.Box.Y, (int)Math.Round(sc.SpaceWidth), sc.Box.Height);
             }
             sc.SpaceAfter = 0;
 
-            List<TextLine> tlList = tl1.Split().Concat(tl2.Split()).OrderBy(x => x.Box.Left).ToList();
+            TextLine[] topsplit = topline.Split().ToArray();
+            TextLine[] bottomsplit = bottomline.Split().ToArray();
 
-            List<TextLine> finished = new List<TextLine>();
-
+            List<TextLine> result = new List<TextLine>();
             int count = 0;
 
-            while (true)
+            for (int i = 0; i < topsplit.Length; i++)
             {
-                TextLine tl = tlList[count++];
-                if (count == tlList.Count) break;
-
-                List<TextChar> tc = new List<TextChar>();
-                for (int i = count; i < tlList.Count; i++)
+                for (int j = count; j < bottomsplit.Length; i++)
                 {
-                    switch (tl.Box.HorizontalIntersect(tlList[i].Box))
+                    switch (topsplit[i].Box.HorizontalIntersect(bottomsplit[j].Box))
                     {
-                        case LineIntersectType.DoesNotIntersect:
-                            finished.Add(new TextLine())
+                        case LineIntersectType.ContainsEnd:
                         case LineIntersectType.Contains:
-                            tc.AddRange(tl.TextChars.Concat(Enumerable.Repeat(sc, 1)).Concat(tlList[i].TextChars));
-
+                            count++;
+                            result.Add(ShiftMerge(topsplit[i], bottomsplit[j], sc));
+                            break;
+                        case LineIntersectType.ContainsStart:
+                            result.Add(ShiftMerge(topsplit[i], bottomsplit[j], sc));
+                            break;
                     }
                 }
             }
 
+            topline.Box = RectangleF.Union(topline.Box, bottomline.Box);
 
+            if (topline.Box.Bottom == bottomline.Box.Bottom) topline.LineSpace = bottomline.LineSpace;
+
+
+            return topline;
+        }
+        private static TextLine ShiftMerge(TextLine start, TextLine end, TextChar separator)
+        {
+            TextLine merged = new TextLine();
+
+            separator.Box = new RectangleF(start.Box.Right, start.Box.Bottom - separator.Box.Height, 
+                                            separator.Box.Width, separator.Box.Height);
+            float shiftx = separator.Box.Right - end.Box.Left;
             
+            for (int i = 0; i < end.TextChars.Length; i++)
+            {
+                RectangleF b = end.TextChars[i].Box;
+                end.TextChars[i].Box = new RectangleF(b.Left + shiftx, b.Y, b.Width, b.Height);
+            }
+            return null;
 
-
-            tl1.Box = RectangleF.Union(tl1.Box, tl2.Box);
-
-            if (tl1.Box.Bottom == tl2.Box.Bottom) tl1.LineSpace = tl2.LineSpace;
-
-
-            return tl1;
         }
 
 

@@ -21,64 +21,36 @@ namespace PDFToExcel
 {
     public static class PDFEngine
     {
-        
-        //public static IEnumerable<TextLine> ParseToLines(StrippedPDFPage page)
-        //{
-        //    int[] yvals = textchars.Keys.OrderBy(x => x).ToArray();
-
-        //    for (int i = 0; i < yvals.Length - 1; i++)
-        //    {
-        //        int diff = Math.Abs(yvals[i + 1] - yvals[i]);
-        //        if (diff < PDFMetrics.LINELIMIT)
-        //        {
-        //            textchars[yvals[i + 1]].AddRange(textchars[yvals[i]]);
-        //            continue;
-        //        }
-        //        yield return new TextLine(textchars[yvals[i]], yvals[i], diff);
-        //    }
-        //}
-
-        public static void TabifyPDF(string pdfpath, int numcolumns=1, int? startpage=null, int? endpage=null, string headerstring=null)
+        public static PDFRowLite[] TabifyPDF(string pdfpath, int numcolumns=1, int? startpage=null, int? endpage=null, string headerstring=null)
         {
             PDDocument doc = PDDocument.load(pdfpath);
             DecryptPDF(ref doc);
 
             // turn user-intuitive pages (1-inclusive) into PDFBox intuitive pages (0-exclusive)
             startpage = startpage > 0 ? startpage - 1 : null;
-            endpage = endpage >= startpage ? endpage : null;
+            endpage = endpage >= startpage ? endpage + 1 : null;
 
             StrippedPDF pdf = StripPDF(ref doc, startpage, endpage);
 
             doc.close();
+
+            PDFTable table = new PDFTable(numcolumns, pdf.Pages.FirstOrDefault().PageSize.Width);
+
+            TextLine[] alltextlines = pdf.Pages.Select(x => x.TextLines).Aggregate(new List<TextLine>(), (a, b) => a.Concat(b).ToList()).ToArray();
+
+
+            IEnumerable<IGrouping<int, TextLine>> grps = alltextlines.GroupBy(x => x.NumColumns());
+            TextLine[] data = grps.Where(grp => grp.Key == numcolumns).SelectMany(x => x).ToArray();
+
+            table.X = data.Min(x => x.Box.Left);
+            table.Width = data.Max(x => x.Box.Right) - table.X;
             
-
-            List<ClassifiedPDFRow> lines = new List<ClassifiedPDFRow>();
-            int count = 0;
-            foreach (TextLine line in new TextLine[3])//ParseToLines(doc, startpage, endpage))
+            if (data != null)
             {
-                TextSet[] txtsets = line.GenerateTextSets().ToArray();
-
-                PDFRowClass tableclass;
-                tableclass = (txtsets.Length > 1 && txtsets.Length <= numcolumns) ? PDFRowClass.data : PDFRowClass.unknown;
-                lines.Add(new ClassifiedPDFRow
-                {
-                    LineType = tableclass,
-                    TextSets = txtsets,
-                    YIndex = Convert.ToInt32(line.Box.Bottom),
-                    Index = count++
-                });
+                
             }
 
-            // sort out table metrics
-            PDFColumn[] table = new PDFColumn[numcolumns];
-            float margin = lines.Where(x=> x.LineType == PDFRowClass.data).Min(x => x.X);
-
-            for (int i = 0; i < numcolumns; i++)
-            {
-
-            }
-                
-                
+            return table;
         }
         public static bool DecryptPDF(ref PDDocument doc)
         {
@@ -104,7 +76,7 @@ namespace PDFToExcel
         private static StrippedPDF StripPDF(ref PDDocument doc, int? startpage = null, int? endpage = null, Rectangle2D parseregion = null)
         {
             int start = startpage ?? 0;
-            int end = endpage + 1 ?? doc.getNumberOfPages();
+            int end = endpage ?? doc.getNumberOfPages();
             java.util.ArrayList pages = GetPageRange(ref doc, start, end);  //potentially same as cat.getPageNodes().getKids()
             PDFStripper stripper = new PDFStripper();
             return stripper.stripPDF(pages);
@@ -136,6 +108,32 @@ namespace PDFToExcel
 
 
     // tabifying
+    public class PDFRowLite : PDFRow, INotifyPropertyChanged
+    {
+        public TextLine[] TextLines { get; set; }
+        public int Index { get; set; }
+
+        public override string ToString()
+        {
+            StringBuilder sb = new StringBuilder();
+            foreach (TextLine ts in TextLines)
+            {
+                sb.Append(ts.ToString()).Append(' ', (int)Math.Round(ts.TextChars.Last().SpaceAfter / ts.TextChars.Last().SpaceWidth));
+            }
+            return sb.ToString();
+        }
+
+        public event PropertyChangedEventHandler PropertyChanged;
+        private void NotifyPropertyChanged([CallerMemberName] string propertyName = "")
+        {
+            if (PropertyChanged != null)
+            {
+                PropertyChanged(this, new PropertyChangedEventArgs(propertyName));
+            }
+        }
+    }
+
+
     public enum PDFRowClass
     {
         header,
@@ -165,7 +163,7 @@ namespace PDFToExcel
                 TotalChars = _textsets.Sum(x => x.Count);
                 float sumw = _textsets.Sum(x => x.Box.Width);
                 AverageCharWidth = sumw / TotalChars;
-                X = _textsets.Min(x => x.Box.X);
+                Box = Box.SetX(_textsets.Min(x => x.Box.X));
             }
         }
         public int TotalChars { get; private set; }
@@ -173,7 +171,6 @@ namespace PDFToExcel
         public int PageNumber { get; set; }
         public int YIndex { get; set; }
         public int Index { get; set; }
-        public float X { get; set; }
 
         public override string ToString()
         {
@@ -196,21 +193,45 @@ namespace PDFToExcel
     }
     public class PDFColumn
     {
-        public float X { get; set; }
-        public float Width { get; set; }
+        public RectangleF Box { get; set; }
     }
     public class PDFRow
     {
-        public float Y { get; set; }
-        public float Height { get; set; }
+        public RectangleF Box { get; set; }
     }
     public class PDFTable
     {
-        public PDFColumn[] Columns { get; set; }
+        public PDFTable(int numcolumns, int width)
+        {
+            Columns = new PDFColumn[numcolumns];
+            _width = width;
+            Array.ForEach(Columns, x => x = new PDFColumn() );
+        }
+        public PDFColumn[] Columns { get; private set; }
         public PDFRow[] Rows { get; set; }
-        public float X { get; set; }
+        private float _x;
+        public float X
+        {
+            get { return _x; }
+            set
+            {
+                float offset = value - _x;
+                _x = value;
+                Array.ForEach(Columns, x => x.Box = x.Box.SetX(x.Box.X + offset));
+            }
+        }
         public float Y { get; set; }
-        public float Width { get; set; }
+        private float _width;
+        public float Width
+        {
+            get { return _width; }
+            set
+            {
+                double fraction = value / _width;
+                _width = value;
+                Array.ForEach(Columns, x => x.Box = x.Box.SetWidth((float)(x.Box.Width * fraction)));
+            }
+        }
         public float Height { get; set; }
     }
 
@@ -234,6 +255,11 @@ namespace PDFToExcel
         public float LineSpace { get; set; }
         public RectangleF Box { get; set; }
 
+        public int NumColumns(double toleranceAdjustment = 0)
+        {
+            double tol = PDFMetrics.CHARSPACING_TOLERANCE - toleranceAdjustment;
+            return TextChars.Where(tc => (tc.SpaceAfter > (tc.SpaceWidth + tol))).Count() + 1;
+        }
         public IOrderedEnumerable<TextSet> GenerateTextSets(double toleranceAdjustment = 0)
         {
             double tol = PDFMetrics.CHARSPACING_TOLERANCE - toleranceAdjustment;
@@ -310,7 +336,6 @@ namespace PDFToExcel
 
                 for (int i = 0; i < TextChars.Length; i++)
                 {
-                    count++;
                     TextChar tc = TextChars[i];
                     chars.Add(tc);
                     if (startofset)
@@ -319,13 +344,11 @@ namespace PDFToExcel
                         bbox.X = tc.Box.Left;
                         startofset = false;
                     }
-                    if (tc.SpaceAfter > (tc.SpaceWidth + tol))
+                    if (tc.SpaceAfter > (tc.SpaceWidth + tol) && count > 0)
                     {
-                        int test = i - count;
                         IEnumerable<TextChar> setchars = TextChars.Skip(i - count).Take(count);
-
                         bbox.Width = tc.Box.Right - bbox.Left;
-                        bbox.Height = setchars.Max(x => x.Box.Height);
+                        bbox.Height = setchars.Max(x => x.Box.Height); //setchars is empty
                         bbox.Y = setchars.Min(x => x.Box.Y);
                         line.Box = bbox;
                         line.TextChars = chars.ToArray();
@@ -334,7 +357,9 @@ namespace PDFToExcel
                         chars.Clear();
                         startofset = true;
                         count = 0;
+                        continue;
                     }
+                    count++;
                 }
                 TextChar lasttc = TextChars.LastOrDefault();
                 bbox.Width = (lasttc.Box.X + lasttc.Box.Width) - bbox.X;
@@ -450,7 +475,12 @@ namespace PDFToExcel
         {
             PDGraphicsState gs = getGraphicsState();
             TextChar tc = BuildTextChar(tp, gs);
-            tcPages[getCurrentPageNo()].Add(tc);
+            int currentPageNo = getCurrentPageNo();
+            if (tcPages.ElementAtOrDefault(currentPageNo) == null)
+            {
+                tcPages[currentPageNo] = new List<TextChar>();
+            }
+            tcPages[currentPageNo].Add(tc);
         }
 
         private static TextChar BuildTextChar(TextPosition tp, PDGraphicsState gstate)
@@ -488,7 +518,9 @@ namespace PDFToExcel
         private TextLine[] BuildTextLines(IOrderedEnumerable<IGrouping<float,TextChar>> lines)
         {
             List<TextLine> TLList = new List<TextLine>();
+            List<TextLine> MergeQueue = new List<TextLine>();
             TextLine lineA = null;
+
             foreach (IGrouping<float,TextChar> line in lines)
             {
                 // create new textline
@@ -514,15 +546,20 @@ namespace PDFToExcel
                     lineB.TextChars[i].SpaceAfter = (float)Math.Round(x2 - x1,1);
                 }
 
-                // if there's a line above...and it overlaps...
-                // merge them and move to next else add the above line as is to TLList
+                // if there's a line above...and it overlaps vertically...
+                // add them to merge queue
                 if (lineA != null)
                 {
                     lineA.LineSpace = lineB.Box.Bottom - lineA.Box.Bottom;
-                    if (lineA.LineSpace < lineB.Box.Height)
+                    if (lineA.LineSpace <= lineB.Box.Height + 1) // +1 is a threshold value - distance between lines to consider merging
                     {
-                        lineA = MergeTextLines(lineA, lineB);
-                        continue;
+                        if (MergeQueue.Count == 0) MergeQueue.AddRange(lineA.Split());
+                        MergeQueue.AddRange(lineB.Split());
+                    }
+                    else if (MergeQueue.Count > 0) // no overlap but have to write and clear merge queue before moving on
+                    {
+                        TLList.AddRange(MergeLines(MergeQueue));
+                        MergeQueue.Clear();
                     }
                     else
                     {
@@ -537,66 +574,73 @@ namespace PDFToExcel
 
             return TLList.ToArray();
         }
-        private static TextLine MergeTextLines(TextLine topline, TextLine bottomline)
+
+        private static IEnumerable<TextLine> MergeLines(IEnumerable<TextLine> mergelist)
         {
-            // first, create a spacechar with the same metrics as tl1 to separate tl1 and tl2
-            TextChar sc = topline.TextChars.Where(x => x.Char == ' ').FirstOrDefault();
-            if (sc.Char != '|')
+            TextLine[] ordered = mergelist.OrderBy(x => x.Box.Left).ToArray();
+            List<TextLine> overlap = new List<TextLine>();
+            List<TextLine> nooverlap = new List<TextLine>(); 
+
+            for (int i = 0; i < ordered.Length; i++)
             {
-                sc = topline.TextChars.FirstOrDefault();
-                sc.Char = '|';
-                sc.Box = new RectangleF(sc.Box.X, sc.Box.Y, (int)Math.Round(sc.SpaceWidth), sc.Box.Height);
-            }
-            sc.SpaceAfter = 0;
-
-            TextLine[] topsplit = topline.Split().ToArray();
-            TextLine[] bottomsplit = bottomline.Split().ToArray();
-
-            List<TextLine> result = new List<TextLine>();
-            int count = 0;
-
-            for (int i = 0; i < topsplit.Length; i++)
-            {
-                for (int j = count; j < bottomsplit.Length; i++)
+                if (i == ordered.Length - 1)
                 {
-                    switch (topsplit[i].Box.HorizontalIntersect(bottomsplit[j].Box))
+                    nooverlap.Add(ordered[i]);
+                    break;
+                }
+                if (!ordered[i].Box.IntersectsHorizontallyWith(ordered[i+1].Box))
+                {
+                    nooverlap.Add(ordered[i]);
+                    continue;
+                }
+                else
+                {
+                    IEnumerable<TextLine> yOrder = new TextLine[] { ordered[i], ordered[i + 1] }.OrderBy(x => x.Box.Bottom);
+                    overlap.Add(yOrder.First());
+                    switch (yOrder.First().Box.HorizontalIntersect(yOrder.Last().Box))
                     {
-                        case LineIntersectType.ContainsEnd:
-                        case LineIntersectType.Contains:
-                            count++;
-                            result.Add(ShiftMerge(topsplit[i], bottomsplit[j], sc));
-                            break;
-                        case LineIntersectType.ContainsStart:
-                            result.Add(ShiftMerge(topsplit[i], bottomsplit[j], sc));
-                            break;
+                        case LineIntersectType.Contains:    //then tmp.First() is ordered[i]
+                            nooverlap.Add(yOrder.Last());
+                            i++;                        //skip ordered[i+1]
+                            continue;
+                        case LineIntersectType.Within:      //then tmp.First() is ordered[i+1]
+                            ordered[i] = yOrder.First();
+                            ordered[i + 1] = yOrder.Last();     //need to evaluate this one again
+                            continue;
+                        case LineIntersectType.ContainsStart:   //then tmp.First() is ordered[i]
+                            continue;
+                        case LineIntersectType.ContainsEnd:     //then tmp.First() is ordered[i+1]
+                            nooverlap.Add(yOrder.Last());
+                            i++;                        //skip ordered[i+1]
+                            continue;
                     }
                 }
             }
-
-            topline.Box = RectangleF.Union(topline.Box, bottomline.Box);
-
-            if (topline.Box.Bottom == bottomline.Box.Bottom) topline.LineSpace = bottomline.LineSpace;
-
-
-            return topline;
-        }
-        private static TextLine ShiftMerge(TextLine start, TextLine end, TextChar separator)
-        {
-            TextLine merged = new TextLine();
-
-            separator.Box = new RectangleF(start.Box.Right, start.Box.Bottom - separator.Box.Height, 
-                                            separator.Box.Width, separator.Box.Height);
-            float shiftx = separator.Box.Right - end.Box.Left;
-            
-            for (int i = 0; i < end.TextChars.Length; i++)
+            foreach (IGrouping<float,TextLine> grps in overlap.GroupBy(x => x.Box.Bottom).OrderBy(grp => grp.Key))
             {
-                RectangleF b = end.TextChars[i].Box;
-                end.TextChars[i].Box = new RectangleF(b.Left + shiftx, b.Y, b.Width, b.Height);
+                TextLine groupedTL = new TextLine();
+                groupedTL.TextChars = grps.Select(x => x.TextChars).
+                    Aggregate(new List<TextChar>(), (a, b) => a.Concat(b).ToList()).OrderBy(x => x.Box.Left).ToArray();
+                groupedTL.LineSpace = grps.Max(x => x.LineSpace);
+                groupedTL.Box = grps.Select(x => x.Box).Aggregate(new RectangleF(), (a, b) => RectangleF.Union(a, b));
+                yield return groupedTL;
             }
-            return null;
 
+            TextLine[] lines = nooverlap.OrderBy(x => x.Box.Left).ToArray();
+            for (int i = 0; i < lines.Length - 1; i++)
+            {
+                lines[i].TextChars[lines[i].TextChars.Length - 1].SpaceAfter =
+                    lines[i + 1].TextChars.First().Box.Left - lines[i].TextChars.Last().Box.Right;
+            }
+            lines[lines.Length - 1].TextChars[lines[lines.Length - 1].TextChars.Length - 1].SpaceAfter = 0;
+
+            TextLine mergedTL = new TextLine();
+            mergedTL.TextChars = lines.Select(x => x.TextChars).
+                Aggregate(new List<TextChar>(), (a, b) => a.Concat(b).ToList()).OrderBy(x => x.Box.Left).ToArray();
+            mergedTL.LineSpace = lines.Max(x => x.LineSpace);
+            mergedTL.Box = lines.Select(x => x.Box).Aggregate(new RectangleF(), (a, b) => RectangleF.Union(a, b));
+            yield return mergedTL;
         }
-
 
         private static int[] GetBits(int flags)
         {

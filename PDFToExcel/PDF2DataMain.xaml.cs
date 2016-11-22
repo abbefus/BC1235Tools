@@ -5,22 +5,18 @@ using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Data;
-using System.Drawing;
 using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Text;
 using System.Text.RegularExpressions;
-using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Data;
-using System.Windows.Documents;
 using System.Windows.Input;
 using System.Windows.Media;
-using System.Windows.Media.Imaging;
-using System.Windows.Navigation;
-using System.Windows.Shapes;
+using RectangleF = System.Drawing.RectangleF;
+using PointF = System.Drawing.PointF;
 
 namespace PDFToExcel
 {
@@ -29,7 +25,7 @@ namespace PDFToExcel
     /// </summary>
     public partial class PDF2DataMain : SecuredWindow
     {
-        ObservableCollection<ClassifiedPDFRow> PDFTextLines { get; set; }
+        ObservableCollection<PDFRowLite> PDFTextLines { get; set; }
 
 
         public PDF2DataMain()
@@ -55,7 +51,7 @@ namespace PDFToExcel
         private void Initialize()
         {
             grid.DataContext = this;
-            PDFTextLines = new ObservableCollection<ClassifiedPDFRow>();
+            
             datagrid.DataContext = PDFTextLines;
             InitializeStaticComboBoxes();
         }
@@ -79,24 +75,13 @@ namespace PDFToExcel
                 int start = string.IsNullOrWhiteSpace(startpage_tb.Text) ? 0 : int.Parse(startpage_tb.Text);
                 int end = string.IsNullOrWhiteSpace(startpage_tb.Text) ? 0 : int.Parse(endpage_tb.Text);
 
-                // custom sort
-                //IEnumerable<PDFTextLine> tmp = 
-                    PDFEngine.TabifyPDF
-                    (openFileDialog.FileName, 
-                    int.Parse(numcolumns_rg.SelectedValue.ToString()),
-                    start,
-                    end);
-                //foreach (PDFTextLine headerdata in tmp.Where(x => x.LineType == PDFTableClass.header)) PDFTextLines.Add(headerdata);
-                //foreach (PDFTextLine otherdata in tmp.Where(x => x.LineType != PDFTableClass.header).OrderBy(x => x.LineType).ThenBy(x => x.YIndex))
-                //{
-                //    PDFTextLines.Add(otherdata);
-                //}
-
+                PDFRowLite[] rows = PDFEngine.TabifyPDF(openFileDialog.FileName, int.Parse(numcolumns_rg.SelectedValue.ToString()), start, end);
+                PDFTextLines = new ObservableCollection<PDFRowLite>(rows);
 
                 if (PDFTextLines.Count > 0)
                 {
                     UpdateStatus(StatusType.Success, string.Format("Processed {0} pages, found {1} lines.",
-                    PDFTextLines.LastOrDefault().PageNumber - PDFTextLines.FirstOrDefault().PageNumber,
+                    start, end,
                     PDFTextLines.Count()));
                 }
                 else
@@ -293,6 +278,27 @@ namespace PDFToExcel
             if (rect.Left < other.Right && rect.Right > other.Right) return LineIntersectType.ContainsEnd;
 
             return LineIntersectType.DoesNotIntersect;
+        }
+        public static bool IntersectsHorizontallyWith(this RectangleF rect, RectangleF other)
+        {
+            return !(rect.Right < other.Left || rect.Left > other.Right);
+        }
+
+        public static RectangleF SetX(this RectangleF rect, float x)
+        {
+            return new RectangleF(x, rect.Y, rect.Width, rect.Height);
+        }
+        public static RectangleF SetY(this RectangleF rect, float y)
+        {
+            return new RectangleF(rect.X, y, rect.Width, rect.Height);
+        }
+        public static RectangleF SetWidth(this RectangleF rect, float width)
+        {
+            return new RectangleF(rect.X, rect.Y, width, rect.Height);
+        }
+        public static RectangleF SetHeight(this RectangleF rect, float height)
+        {
+            return new RectangleF(rect.X, rect.Y, rect.Width, height);
         }
     }
     public enum LineIntersectType

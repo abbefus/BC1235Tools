@@ -42,8 +42,8 @@
                                     Binding="{Binding Mode=OneWay, NotifyOnSourceUpdated=True}" ElementStyle="{StaticResource TextColor}"/>
 
 
-                <DataGridTextColumn Header="Page" TextBlock.TextAlignment="Center" HeaderStyle="{StaticResource hdrstyle}" 
-                                    Binding="{Binding PageNumber, Mode=OneWay, NotifyOnSourceUpdated=True}" ElementStyle="{StaticResource TextColor}"/>
+                <!--<DataGridTextColumn Header="Page" TextBlock.TextAlignment="Center" HeaderStyle="{StaticResource hdrstyle}" 
+                                    Binding="{Binding PageNumber, Mode=OneWay, NotifyOnSourceUpdated=True}" ElementStyle="{StaticResource TextColor}"/>-->
             </DataGrid.Columns>
 
             <DataGrid.Resources>

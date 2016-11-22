@@ -28,7 +28,7 @@ namespace PDFToExcel
 
             // turn user-intuitive pages (1-inclusive) into PDFBox intuitive pages (0-exclusive)
             startpage = startpage > 0 ? startpage - 1 : null;
-            endpage = endpage >= startpage ? endpage + 1 : null;
+            endpage = endpage >= startpage ? endpage : null;
 
             StrippedPDF pdf = StripPDF(ref doc, startpage, endpage);
 
@@ -38,19 +38,34 @@ namespace PDFToExcel
 
             TextLine[] alltextlines = pdf.Pages.Select(x => x.TextLines).Aggregate(new List<TextLine>(), (a, b) => a.Concat(b).ToList()).ToArray();
 
-
             IEnumerable<IGrouping<int, TextLine>> grps = alltextlines.GroupBy(x => x.NumColumns());
             TextLine[] data = grps.Where(grp => grp.Key == numcolumns).SelectMany(x => x).ToArray();
 
             table.X = data.Min(x => x.Box.Left);
             table.Width = data.Max(x => x.Box.Right) - table.X;
+
+            PDFRowLite[] rows = new PDFRowLite[data.Length];
             
             if (data != null)
             {
-                
+                string headerstr = data.First().ToString();
+                for (int i = 0; i < rows.Length; i++)
+                {
+                    rows[i] = new PDFRowLite();
+                    rows[i].TextLines = data[i].Split().ToArray();
+                    rows[i].Index = i + 1;
+                    if (i == 0 || rows[i].ToString() == headerstr)
+                    {
+                        rows[i].LineType = PDFRowClass.header;
+                    }
+                    else
+                    {
+                        rows[i].LineType = PDFRowClass.data;
+                    }
+                }
             }
 
-            return table;
+            return rows;
         }
         public static bool DecryptPDF(ref PDDocument doc)
         {
@@ -110,8 +125,19 @@ namespace PDFToExcel
     // tabifying
     public class PDFRowLite : PDFRow, INotifyPropertyChanged
     {
+        private PDFRowClass _lineType;
+        public PDFRowClass LineType
+        {
+            get { return _lineType; }
+            set
+            {
+                _lineType = value;
+                NotifyPropertyChanged();
+            }
+        }
         public TextLine[] TextLines { get; set; }
         public int Index { get; set; }
+
 
         public override string ToString()
         {
@@ -205,7 +231,10 @@ namespace PDFToExcel
         {
             Columns = new PDFColumn[numcolumns];
             _width = width;
-            Array.ForEach(Columns, x => x = new PDFColumn() );
+            for (int i=0;i<numcolumns;i++)
+            {
+                Columns[i] = new PDFColumn();
+            }
         }
         public PDFColumn[] Columns { get; private set; }
         public PDFRow[] Rows { get; set; }
@@ -446,7 +475,7 @@ namespace PDFToExcel
             
             StrippedPDF pdf = new StrippedPDF();
             List<StrippedPDFPage> pdfpages = new List<StrippedPDFPage>();
-            for (int i = 1; i < pagecount; i++)
+            for (int i = 1; i < pagecount+1; i++)
             {
                 StrippedPDFPage pdfpage = new StrippedPDFPage(i);
 

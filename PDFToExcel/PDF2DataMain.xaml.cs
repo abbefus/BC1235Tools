@@ -51,7 +51,7 @@ namespace PDFToExcel
         private void Initialize()
         {
             grid.DataContext = this;
-            
+            PDFTextLines = new ObservableCollection<PDFRowLite>();
             datagrid.DataContext = PDFTextLines;
             InitializeStaticComboBoxes();
         }
@@ -76,7 +76,10 @@ namespace PDFToExcel
                 int end = string.IsNullOrWhiteSpace(startpage_tb.Text) ? 0 : int.Parse(endpage_tb.Text);
 
                 PDFRowLite[] rows = PDFEngine.TabifyPDF(openFileDialog.FileName, int.Parse(numcolumns_rg.SelectedValue.ToString()), start, end);
-                PDFTextLines = new ObservableCollection<PDFRowLite>(rows);
+                foreach (PDFRowLite row in rows)
+                {
+                    PDFTextLines.Add(row);
+                }
 
                 if (PDFTextLines.Count > 0)
                 {
@@ -188,12 +191,12 @@ namespace PDFToExcel
                         int row = 1;
                         if (includehdr_chk.IsChecked ?? true)
                         {
-                            owb.UpdateRow(row++, PDFTextLines.Where(x => x.LineType == PDFRowClass.header).FirstOrDefault().TextSets.Select(x => x.Text).ToArray());
+                            owb.UpdateRow(row++, PDFTextLines.Where(x => x.LineType == PDFRowClass.header).FirstOrDefault().TextLines.Select(x => x.ToString()).ToArray());
                         }
-                        IEnumerable<ClassifiedPDFRow> classedpdfs = PDFTextLines.Where(x => x.LineType == PDFRowClass.data);
-                        foreach (ClassifiedPDFRow classedpdf in classedpdfs)
+                        IEnumerable<PDFRowLite> classedpdfs = PDFTextLines.Where(x => x.LineType == PDFRowClass.data);
+                        foreach (PDFRowLite classedpdf in classedpdfs)
                         {
-                            owb.UpdateRow(row++, classedpdf.TextSets.Select(x => x.Text).ToArray());
+                            owb.UpdateRow(row++, classedpdf.TextLines.Select(x => x.ToString()).ToArray());
                         }
                         owb.ActiveWorksheet.Cells.AutoFitColumns();
                         owb.Save();
@@ -205,7 +208,7 @@ namespace PDFToExcel
 
         private void setdelete_btn_Click(object sender, RoutedEventArgs e)
         {
-            foreach (ClassifiedPDFRow pdfTL in datagrid.SelectedItems)
+            foreach (PDFRowLite pdfTL in datagrid.SelectedItems)
             {
                 PDFTextLines[PDFTextLines.IndexOf(pdfTL)].LineType = PDFRowClass.delete;
             }
@@ -213,7 +216,7 @@ namespace PDFToExcel
 
         private void setheader_btn_Click(object sender, RoutedEventArgs e)
         {
-            foreach (ClassifiedPDFRow pdfTL in datagrid.SelectedItems)
+            foreach (PDFRowLite pdfTL in datagrid.SelectedItems)
             {
                 PDFTextLines[PDFTextLines.IndexOf(pdfTL)].LineType = PDFRowClass.header;
             }
@@ -221,7 +224,7 @@ namespace PDFToExcel
 
         private void setdata_btn_Click(object sender, RoutedEventArgs e)
         {
-            foreach(ClassifiedPDFRow pdfTL in datagrid.SelectedItems)
+            foreach(PDFRowLite pdfTL in datagrid.SelectedItems)
             {
                 PDFTextLines[PDFTextLines.IndexOf(pdfTL)].LineType = PDFRowClass.data;
             }
@@ -229,7 +232,7 @@ namespace PDFToExcel
 
         private void purgedeleted_btn_Click(object sender, RoutedEventArgs e)
         {
-            PDFTextLines.RemoveAll<ClassifiedPDFRow>(x => x.LineType == PDFRowClass.delete);
+            PDFTextLines.RemoveAll<PDFRowLite>(x => x.LineType == PDFRowClass.delete);
         }
     }
     public class ConsolWriter : TextWriter

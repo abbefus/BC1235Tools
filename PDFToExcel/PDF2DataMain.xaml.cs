@@ -25,7 +25,7 @@ namespace PDFToExcel
     /// </summary>
     public partial class PDF2DataMain : SecuredWindow
     {
-        ObservableCollection<PDFRowLite> PDFTextLines { get; set; }
+        ObservableCollection<PDFRow> PDFTextLines { get; set; }
 
 
         public PDF2DataMain()
@@ -51,7 +51,7 @@ namespace PDFToExcel
         private void Initialize()
         {
             grid.DataContext = this;
-            PDFTextLines = new ObservableCollection<PDFRowLite>();
+            PDFTextLines = new ObservableCollection<PDFRow>();
             datagrid.DataContext = PDFTextLines;
             InitializeStaticComboBoxes();
         }
@@ -75,23 +75,22 @@ namespace PDFToExcel
                 int start = string.IsNullOrWhiteSpace(startpage_tb.Text) ? 0 : int.Parse(startpage_tb.Text);
                 int end = string.IsNullOrWhiteSpace(startpage_tb.Text) ? 0 : int.Parse(endpage_tb.Text);
 
-                PDFRowLite[] rows = PDFEngine.TabifyPDF(openFileDialog.FileName, int.Parse(numcolumns_rg.SelectedValue.ToString()), start, end);
-                foreach (PDFRowLite row in rows)
+                PDFTable pdftable = PDFEngine.TabifyPDF(openFileDialog.FileName, int.Parse(numcolumns_rg.SelectedValue.ToString()), start, end);
+                if (pdftable != null)
                 {
-                    PDFTextLines.Add(row);
+                    foreach (PDFRow row in pdftable.Rows)
+                    {
+                        PDFTextLines.Add(row);
+                    }
+                    if (PDFTextLines.Count > 0)
+                    {
+                        UpdateStatus(StatusType.Success, string.Format("Processed {0} pages, found {1} lines.",
+                        start, end,
+                        PDFTextLines.Count()));
+                        return;
+                    }
                 }
-
-                if (PDFTextLines.Count > 0)
-                {
-                    UpdateStatus(StatusType.Success, string.Format("Processed {0} pages, found {1} lines.",
-                    start, end,
-                    PDFTextLines.Count()));
-                }
-                else
-                {
-                    UpdateStatus(StatusType.Failure, "Error or no data in pdf.");
-                }
-                
+                UpdateStatus(StatusType.Failure, "Error or no data in pdf.");
             }
         }
 
@@ -191,12 +190,12 @@ namespace PDFToExcel
                         int row = 1;
                         if (includehdr_chk.IsChecked ?? true)
                         {
-                            owb.UpdateRow(row++, PDFTextLines.Where(x => x.LineType == PDFRowClass.header).FirstOrDefault().TextLines.Select(x => x.ToString()).ToArray());
+                            //FUCKING NOPE! --------------------------------------------------------------------------------------------
+                            owb.UpdateRow(row++, PDFTextLines.Where(x => x.RowClass == PDFRowClass.header).First().ToString().Split('\t'));
                         }
-                        IEnumerable<PDFRowLite> classedpdfs = PDFTextLines.Where(x => x.LineType == PDFRowClass.data);
-                        foreach (PDFRowLite classedpdf in classedpdfs)
+                        foreach (PDFRow classedpdf in PDFTextLines.Where(x => x.RowClass == PDFRowClass.data))
                         {
-                            owb.UpdateRow(row++, classedpdf.TextLines.Select(x => x.ToString()).ToArray());
+                            owb.UpdateRow(row++, classedpdf.ToString().Split('\t'));
                         }
                         owb.ActiveWorksheet.Cells.AutoFitColumns();
                         owb.Save();
@@ -208,31 +207,31 @@ namespace PDFToExcel
 
         private void setdelete_btn_Click(object sender, RoutedEventArgs e)
         {
-            foreach (PDFRowLite pdfTL in datagrid.SelectedItems)
+            foreach (PDFRow pdfTL in datagrid.SelectedItems)
             {
-                PDFTextLines[PDFTextLines.IndexOf(pdfTL)].LineType = PDFRowClass.delete;
+                PDFTextLines[PDFTextLines.IndexOf(pdfTL)].RowClass = PDFRowClass.delete;
             }
         }
 
         private void setheader_btn_Click(object sender, RoutedEventArgs e)
         {
-            foreach (PDFRowLite pdfTL in datagrid.SelectedItems)
+            foreach (PDFRow pdfTL in datagrid.SelectedItems)
             {
-                PDFTextLines[PDFTextLines.IndexOf(pdfTL)].LineType = PDFRowClass.header;
+                PDFTextLines[PDFTextLines.IndexOf(pdfTL)].RowClass = PDFRowClass.header;
             }
         }
 
         private void setdata_btn_Click(object sender, RoutedEventArgs e)
         {
-            foreach(PDFRowLite pdfTL in datagrid.SelectedItems)
+            foreach(PDFRow pdfTL in datagrid.SelectedItems)
             {
-                PDFTextLines[PDFTextLines.IndexOf(pdfTL)].LineType = PDFRowClass.data;
+                PDFTextLines[PDFTextLines.IndexOf(pdfTL)].RowClass = PDFRowClass.data;
             }
         }
 
         private void purgedeleted_btn_Click(object sender, RoutedEventArgs e)
         {
-            PDFTextLines.RemoveAll<PDFRowLite>(x => x.LineType == PDFRowClass.delete);
+            PDFTextLines.RemoveAll<PDFRow>(x => x.RowClass == PDFRowClass.delete);
         }
     }
     public class ConsolWriter : TextWriter
@@ -321,7 +320,7 @@ namespace PDFToExcel
                 case "header":
                     return new SolidColorBrush((Color)ColorConverter.ConvertFromString("#000"));
                 case "data":
-                    return new SolidColorBrush((Color)ColorConverter.ConvertFromString("#555"));
+                    return new SolidColorBrush((Color)ColorConverter.ConvertFromString("#999"));
                 case "delete":
                     return new SolidColorBrush((Color)ColorConverter.ConvertFromString("#E00"));
                 case "unknown":

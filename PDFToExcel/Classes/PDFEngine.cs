@@ -21,7 +21,18 @@ namespace PDFToExcel
 {
     public static class PDFEngine
     {
-        public static PDFRowLite[] TabifyPDF(string pdfpath, int numcolumns=1, int? startpage=null, int? endpage=null, string headerstring=null)
+
+        //TODO:
+        //  1. also user specify if multi-page table
+        //  2. prompt user to verify extracted header info instead of assuming
+        //  3. handle cases where no data matching the specified number of columns is found
+        //          by running through, gathering data and then prompting user with missing column (greatest VDivBuffer or first/last)
+        //          by lowering the number of columns to the max found and proceeding
+        //          by adjusting the tolerance so that a column separated by less than the default tolerance is found
+        //  4. trim RowData textlines (remove SpaceAfter Values so textline.ToString() doesn't print the trailing spaces)
+        //      or add an argument to the TextLine .ToString method that does this
+
+        public static PDFTable TabifyPDF(string pdfpath, int numcolumns=1, int? startpage=null, int? endpage=null, string headerstring=null)
         {
             PDDocument doc = PDDocument.load(pdfpath);
             DecryptPDF(ref doc);
@@ -34,39 +45,188 @@ namespace PDFToExcel
 
             doc.close();
 
-            PDFTable table = new PDFTable(numcolumns, pdf.Pages.FirstOrDefault().PageSize.Width);
+            // group data by the number of columns found (NumColumns found using spaceafter > spacewidth)
+            IEnumerable<IGrouping<int, TextLine>> grps = pdf.Pages.Select(x => x.TextLines)
+                .Aggregate(new List<TextLine>(), (a, b) => a.Concat(b).ToList())
+                .GroupBy(x => x.NumColumns());
 
-            TextLine[] alltextlines = pdf.Pages.Select(x => x.TextLines).Aggregate(new List<TextLine>(), (a, b) => a.Concat(b).ToList()).ToArray();
+            // these keys represent the difference between the expected number of columns and the number found for the row
+            int[] keys = grps.Select(grp => Math.Abs(numcolumns - grp.Key)).OrderBy(x => x).ToArray();
 
-            IEnumerable<IGrouping<int, TextLine>> grps = alltextlines.GroupBy(x => x.NumColumns());
-            TextLine[] data = grps.Where(grp => grp.Key == numcolumns).SelectMany(x => x).ToArray();
-
-            table.X = data.Min(x => x.Box.Left);
-            table.Width = data.Max(x => x.Box.Right) - table.X;
-
-            PDFRowLite[] rows = new PDFRowLite[data.Length];
-            
-            if (data != null)
+            // if the expected number of columns is not found
+            // can try re-grouping with NumColumns(toleranceAdjustment) or dropping missing columns
+            // tolerance adjustment will decrease the space required to declare a column
+            if (keys[0] != 0)
             {
-                string headerstr = data.First().ToString();
-                for (int i = 0; i < rows.Length; i++)
+                //for now, prompt user and stop operation -- allows us to run on assumption that all columns are present
+                MessageBox.Show(string.Format("Unable to find {0} columns, aborting operation."),
+                    "Required Columns Not Found",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Exclamation);
+                return null;
+            }
+
+            PDFTable table = BuildTable(grps.OrderBy(grp => grp.Key).First().Select(x => x.Box), numcolumns);
+
+            // loop through data from closest number of columns to expected to farthest
+            List<PDFRow> rows = new List<PDFRow>();
+            int count = 0;
+            string headerstr = "";
+            for (int i = 0; i < keys.Length; i++)
+            {
+                IGrouping<int, TextLine> group = grps.Where(grp => grp != null && Math.Abs(numcolumns - grp.Key) == keys[i]).FirstOrDefault();
+
+                foreach (IOrderedEnumerable<TextLine> line in group.Select(x => x.Split()))
                 {
-                    rows[i] = new PDFRowLite();
-                    rows[i].TextLines = data[i].Split().ToArray();
-                    rows[i].Index = i + 1;
-                    if (i == 0 || rows[i].ToString() == headerstr)
+                    PDFRow row = new PDFRow();
+                    row.TextLines = TrimLines(line);
+                    row.Index = ++count;
+                    if (i == 0)
                     {
-                        rows[i].LineType = PDFRowClass.header;
+                        row.ColumnIndices = Enumerable.Range(0, row.TextLines.Length).ToArray();
+                        if (keys[i] == 0 && count == 1)
+                        {
+                            // This might be where you prompt the user to verify whether this row is the header**
+                            headerstr = row.ToString();
+                            row.RowClass = PDFRowClass.header;
+                        }
+                        else
+                        {
+                            row.RowClass = row.ToString() == headerstr ?
+                            PDFRowClass.delete : PDFRowClass.data;
+                        }
                     }
                     else
                     {
-                        rows[i].LineType = PDFRowClass.data;
+                        row.RowClass = PDFRowClass.unknown;
                     }
+                    rows.Add(row);
                 }
             }
+            table.Rows = rows.OrderBy(row => (int)row.RowClass).ToArray();
+            ProfileRows(ref table);
 
-            return rows;
+            return table;
         }
+
+        private static TextLine[] TrimLines(IOrderedEnumerable<TextLine> lines)
+        {
+            TextLine[] linearray = lines.ToArray();
+            for (int i = 0; i< linearray.Length; i++)
+            {
+                linearray[i].Trim();
+            }
+            return linearray;
+        }
+        private static void ProfileRows(ref PDFTable table)
+        {
+            IEnumerable<PDFRow> datarows = table.Rows.Where(x => x.RowClass == PDFRowClass.data);
+            for (int col = 0; col < table.Columns.Length-1; col++)
+            {
+                IEnumerable<RectangleF> column = datarows.Select(x => x.TextLines[col].Box);
+                IEnumerable<RectangleF> nextcolumn = datarows.Select(x => x.TextLines[col+1].Box);
+                AdjustColumn(ref table, col, column, nextcolumn);
+            }
+            int lastcol = table.Columns.Length - 1;
+            AdjustColumn(ref table, lastcol, datarows.Select(x => x.TextLines[lastcol].Box));
+            datarows = null;
+
+            IEnumerable<PDFRow> unknownrows = table.Rows.Where(x => x.RowClass == PDFRowClass.unknown);
+            foreach (PDFRow row in unknownrows)
+            {
+                row.ColumnIndices = new int[row.TextLines.Length];
+                for (int i = 0; i < row.ColumnIndices.Length; i++)
+                {
+                    row.ColumnIndices[i] = -1;
+                    IEnumerable<int> indices = table.Columns
+                        .Where(x => x.Box.IntersectsHorizontallyWith(row.TextLines[i].Box))
+                        .Select(x => x.Index);
+                    if (indices.Count() == 1)
+                    {
+                        int col = indices.FirstOrDefault();
+                        row.ColumnIndices[i] = col;
+                    }
+                    else
+                    {
+                        // set to negative to flag as delete
+                        row.ColumnIndices[i] = -indices.Count();
+                    }
+                }
+                row.RowClass = row.ColumnIndices.Any(x => x < 0) ? PDFRowClass.delete : PDFRowClass.data;
+            }
+        }
+        private static void AdjustColumn(ref PDFTable table, int col, 
+            IEnumerable<RectangleF> columnData, IEnumerable<RectangleF> nextcolumnData = null )
+        {
+            if (columnData.All(box => box.Left == columnData.First().Left))
+            {
+                table.Columns[col].HorizontalAlignment = HorizontalAlignment.Left;
+                float colx = columnData.First().Left - 1;
+                if (nextcolumnData != null)
+                {
+                    table.VDivBuffers[col, 0] = columnData.Max(box => box.Right);
+                    table.VDivBuffers[col, 1] = nextcolumnData.Min(box => box.Left);
+                }
+                table.Columns[col].Box = new RectangleF
+                    (
+                        colx,
+                        table.Box.Top,
+                        columnData.Max(box => box.Right) - colx,
+                        table.Box.Height
+                    );
+            }
+            else if (columnData.All(box => box.Right == columnData.First().Right))
+            {
+                table.Columns[col].HorizontalAlignment = HorizontalAlignment.Right;
+                float colx = col == 0 ? table.Box.Left : table.VDivBuffers[col - 1, 1];
+                table.Columns[col].Box = new RectangleF
+                    (
+                        colx,
+                        table.Box.Top,
+                        columnData.First().Right - colx,
+                        table.Box.Height
+                    );
+                if (nextcolumnData != null)
+                {
+                    table.VDivBuffers[col, 0] = table.Columns[col].Box.Right;
+                    table.VDivBuffers[col, 1] = table.Columns[col].Box.Right + 2;
+                }
+                
+            }
+            else
+            {
+                table.Columns[col].HorizontalAlignment = HorizontalAlignment.Center;
+                float colx = col == 0 ? table.Box.Left : table.VDivBuffers[col - 1, 1];
+                if (nextcolumnData != null)
+                {
+                    table.VDivBuffers[col, 0] = columnData.Max(box => box.Right);
+                    table.VDivBuffers[col, 1] = nextcolumnData.Min(box => box.Left);
+                }
+                table.Columns[col].Box = new RectangleF
+                    (
+                        colx,
+                        table.Box.Top,
+                        columnData.Max(box => box.Right) - colx,
+                        table.Box.Height
+                    );
+            }
+        }
+
+        private static PDFTable BuildTable(IEnumerable<RectangleF> boxes, int numcolumns)
+        {
+            PDFTable table = new PDFTable(numcolumns);
+            float xmin = boxes.Min(r => r.Left);
+            float ymin = boxes.Min(r => r.Top);
+            table.Box = new RectangleF
+                (
+                    xmin,
+                    ymin,
+                    boxes.Max(x => x.Right) - xmin,
+                    boxes.Max(x => x.Bottom) - ymin //incorrect unless one page (not used for anything anyway)
+                );
+            return table;
+        }
+
         public static bool DecryptPDF(ref PDDocument doc)
         {
             if (doc.isEncrypted())
@@ -123,28 +283,53 @@ namespace PDFToExcel
 
 
     // tabifying
-    public class PDFRowLite : PDFRow, INotifyPropertyChanged
+    public class PDFRow : INotifyPropertyChanged
     {
-        private PDFRowClass _lineType;
-        public PDFRowClass LineType
+        public RectangleF Box { get; private set; }
+        private PDFRowClass _rowClass;
+        public PDFRowClass RowClass
         {
-            get { return _lineType; }
+            get { return _rowClass; }
             set
             {
-                _lineType = value;
+                _rowClass = value;
                 NotifyPropertyChanged();
             }
         }
-        public TextLine[] TextLines { get; set; }
+        private TextLine[] _textlines;
+        public TextLine[] TextLines
+        {
+            get { return _textlines; }
+            set
+            {
+                _textlines = value;
+                float boxx = TextLines.First().Box.Left;
+                Box = new RectangleF
+                (
+                    boxx,
+                    TextLines.First().Box.Top,
+                    TextLines.Last().Box.Right - boxx,
+                    TextLines.Max(x => x.Box.Height)
+                );
+            }
+        }
         public int Index { get; set; }
-
+        public int[] ColumnIndices { get; set; }
 
         public override string ToString()
         {
             StringBuilder sb = new StringBuilder();
-            foreach (TextLine ts in TextLines)
+            int index = 0;
+            for (int i = 0; i < ColumnIndices.Max(x => x); i++)
             {
-                sb.Append(ts.ToString()).Append(' ', (int)Math.Round(ts.TextChars.Last().SpaceAfter / ts.TextChars.Last().SpaceWidth));
+                if (ColumnIndices[index++] == i)
+                {
+                    sb.Append(TextLines[i].ToString(false)).Append('\t');
+                }
+                else
+                {
+                    sb.Append('\t');
+                }
             }
             return sb.ToString();
         }
@@ -162,13 +347,14 @@ namespace PDFToExcel
 
     public enum PDFRowClass
     {
-        header,
-        data,
-        delete,
-        unknown
+        header = 1,
+        data = 2,
+        delete = 3,
+        unknown = 4
     }
-    public class ClassifiedPDFRow : PDFRow, INotifyPropertyChanged
+    public class ClassifiedPDFRow : INotifyPropertyChanged
     {
+        public RectangleF Box { get; set; }
         private PDFRowClass _lineType;
         public PDFRowClass LineType
         {
@@ -219,49 +405,36 @@ namespace PDFToExcel
     }
     public class PDFColumn
     {
+        public PDFColumn(int index)
+        {
+            Index = index;
+        }
         public RectangleF Box { get; set; }
-    }
-    public class PDFRow
-    {
-        public RectangleF Box { get; set; }
+        public int Index { get; set; }
+        public HorizontalAlignment HorizontalAlignment { get; set; }
     }
     public class PDFTable
     {
-        public PDFTable(int numcolumns, int width)
+        public PDFTable(int numcolumns)
         {
             Columns = new PDFColumn[numcolumns];
-            _width = width;
+            VDivisions = new float[numcolumns + 1];
+            VDivBuffers = new float[numcolumns - 1,2];
             for (int i=0;i<numcolumns;i++)
             {
-                Columns[i] = new PDFColumn();
+                Columns[i] = new PDFColumn(i);
             }
         }
+        public RectangleF Box { get; set; }
+        public float[] VDivisions { get; set; }
+        public float[,] VDivBuffers { get; set; }
         public PDFColumn[] Columns { get; private set; }
         public PDFRow[] Rows { get; set; }
-        private float _x;
-        public float X
+
+        private float GetBuffer(int col)
         {
-            get { return _x; }
-            set
-            {
-                float offset = value - _x;
-                _x = value;
-                Array.ForEach(Columns, x => x.Box = x.Box.SetX(x.Box.X + offset));
-            }
+            return VDivBuffers[col, 1] - VDivBuffers[col, 0];
         }
-        public float Y { get; set; }
-        private float _width;
-        public float Width
-        {
-            get { return _width; }
-            set
-            {
-                double fraction = value / _width;
-                _width = value;
-                Array.ForEach(Columns, x => x.Box = x.Box.SetWidth((float)(x.Box.Width * fraction)));
-            }
-        }
-        public float Height { get; set; }
     }
 
 
@@ -280,10 +453,33 @@ namespace PDFToExcel
     }   // contains a char and character metrics
     public class TextLine
     {
-        public TextChar[] TextChars { get; set; }
+        private TextChar[] _textChars;
+        public TextChar[] TextChars
+        {
+            get { return _textChars; }
+            set
+            {
+                _textChars = value;
+                float boxx = TextChars.First().Box.Left;
+                Box = new RectangleF
+                (
+                    boxx,
+                    TextChars.Min(x => x.Box.Top),
+                    (TextChars.Last().Box.Right - boxx) + TextChars.Last().SpaceAfter,
+                    TextChars.Max(x => x.Box.Height)
+                );
+            }
+        }
         public float LineSpace { get; set; }
-        public RectangleF Box { get; set; }
+        public RectangleF Box { get; private set; }
 
+        public void Trim()
+        {
+            int count = TextChars.Length - 1;
+            while (count > -1 && TextChars[count].Char == ' ') count--;
+            TextChars[count].SpaceAfter = 0;
+            TextChars = TextChars.Take(count+1).ToArray();
+        }
         public int NumColumns(double toleranceAdjustment = 0)
         {
             double tol = PDFMetrics.CHARSPACING_TOLERANCE - toleranceAdjustment;
@@ -360,7 +556,6 @@ namespace PDFToExcel
                 bool startofset = true;
                 TextLine line = new TextLine();
                 List<TextChar> chars = new List<TextChar>();
-                RectangleF bbox = new RectangleF();
                 int count = 0;
 
                 for (int i = 0; i < TextChars.Length; i++)
@@ -370,16 +565,11 @@ namespace PDFToExcel
                     if (startofset)
                     {
                         line = new TextLine();
-                        bbox.X = tc.Box.Left;
                         startofset = false;
                     }
                     if (tc.SpaceAfter > (tc.SpaceWidth + tol) && count > 0)
                     {
                         IEnumerable<TextChar> setchars = TextChars.Skip(i - count).Take(count);
-                        bbox.Width = tc.Box.Right - bbox.Left;
-                        bbox.Height = setchars.Max(x => x.Box.Height); //setchars is empty
-                        bbox.Y = setchars.Min(x => x.Box.Y);
-                        line.Box = bbox;
                         line.TextChars = chars.ToArray();
                         setlist.Add(line);
 
@@ -390,13 +580,12 @@ namespace PDFToExcel
                     }
                     count++;
                 }
-                TextChar lasttc = TextChars.LastOrDefault();
-                bbox.Width = (lasttc.Box.X + lasttc.Box.Width) - bbox.X;
-                bbox.Height = TextChars.Skip(TextChars.Length - count).Take(count).Max(c => c.Box.Height);
-                bbox.Y = TextChars.Skip(TextChars.Length - count).Take(count).Min(c => c.Box.Y);
-                line.Box = bbox;
-                line.TextChars = chars.ToArray();
-                setlist.Add(line);
+                if (chars.Count > 0)
+                {
+                    TextChar lasttc = TextChars.LastOrDefault();
+                    line.TextChars = chars.ToArray();
+                    setlist.Add(line);
+                }
                 return setlist.OrderBy(x => x.Box.X);
             }
             catch
@@ -411,6 +600,20 @@ namespace PDFToExcel
             {
                 sb.Append(tc.Char);
                 if (tc.SpaceAfter > (tc.SpaceWidth + PDFMetrics.CHARSPACING_TOLERANCE))
+                {
+                    int numspaces = (int)Math.Floor(tc.SpaceAfter / tc.SpaceWidth);
+                    sb.Append(' ', numspaces);
+                }
+            }
+            return sb.ToString();
+        }
+        public string ToString(bool append=true)
+        {
+            StringBuilder sb = new StringBuilder();
+            foreach (TextChar tc in TextChars)
+            {
+                sb.Append(tc.Char);
+                if (append && tc.SpaceAfter > (tc.SpaceWidth + PDFMetrics.CHARSPACING_TOLERANCE))
                 {
                     int numspaces = (int)Math.Floor(tc.SpaceAfter / tc.SpaceWidth);
                     sb.Append(' ', numspaces);
@@ -557,15 +760,7 @@ namespace PDFToExcel
                 {
                     TextChars = line.OrderBy(tc => tc.Box.Left).ToArray()
                 };
-                float w = lineB.TextChars.Last().Box.Right - lineB.TextChars.First().Box.Left;
-                float h = lineB.TextChars.Max(x => x.Box.Height);
-                lineB.Box = new RectangleF
-                (
-                    lineB.TextChars.First().Box.X,
-                    line.Key - h,
-                    w,
-                    h
-                );
+                
 
                 // set the SpaceAfter property (now that chars are ordered)
                 for (int i = 0; i < lineB.TextChars.Length-1; i++)
@@ -651,7 +846,6 @@ namespace PDFToExcel
                 groupedTL.TextChars = grps.Select(x => x.TextChars).
                     Aggregate(new List<TextChar>(), (a, b) => a.Concat(b).ToList()).OrderBy(x => x.Box.Left).ToArray();
                 groupedTL.LineSpace = grps.Max(x => x.LineSpace);
-                groupedTL.Box = grps.Select(x => x.Box).Aggregate(new RectangleF(), (a, b) => RectangleF.Union(a, b));
                 yield return groupedTL;
             }
 
@@ -667,7 +861,6 @@ namespace PDFToExcel
             mergedTL.TextChars = lines.Select(x => x.TextChars).
                 Aggregate(new List<TextChar>(), (a, b) => a.Concat(b).ToList()).OrderBy(x => x.Box.Left).ToArray();
             mergedTL.LineSpace = lines.Max(x => x.LineSpace);
-            mergedTL.Box = lines.Select(x => x.Box).Aggregate(new RectangleF(), (a, b) => RectangleF.Union(a, b));
             yield return mergedTL;
         }
 

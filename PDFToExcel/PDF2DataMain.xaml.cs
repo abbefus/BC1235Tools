@@ -58,7 +58,7 @@ namespace PDFToExcel
 
         private void InitializeStaticComboBoxes()
         {
-            for (int i=1; i<=20;i++)
+            for (int i=2; i<=20;i++)
             {
                 numcolumns_rgc.Items.Add(new RibbonGalleryItem { Content = i.ToString() });
             }
@@ -70,6 +70,9 @@ namespace PDFToExcel
             OpenFileDialog openFileDialog = new OpenFileDialog();
             if (openFileDialog.ShowDialog(this) == true)
             {
+                // SHOW DIALOG FOR SPECIFYING COLUMNS AND PAGE RANGE HERE
+
+
                 PDFTextLines.Clear();
 
                 int start = string.IsNullOrWhiteSpace(startpage_tb.Text) ? 0 : int.Parse(startpage_tb.Text);

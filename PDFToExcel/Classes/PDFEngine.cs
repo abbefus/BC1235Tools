@@ -66,7 +66,7 @@ namespace PDFToExcel
                 return null;
             }
 
-            PDFTable table = BuildTable(grps.OrderBy(grp => grp.Key).First().Select(x => x.Box), numcolumns);
+            PDFTable table = BuildTable(grps.OrderBy(grp => Math.Abs(numcolumns - grp.Key)).First().Select(x => x.Box), numcolumns);
 
             // loop through data from closest number of columns to expected to farthest
             List<PDFRow> rows = new List<PDFRow>();
@@ -104,9 +104,9 @@ namespace PDFToExcel
                 }
             }
             table.Rows = rows.OrderBy(row => (int)row.RowClass).ToArray();
-            ProfileRows(ref table);
 
-            return table;
+
+            return ProfileRows(ref table) ? table : null;
         }
 
         private static TextLine[] TrimLines(IOrderedEnumerable<TextLine> lines)
@@ -118,18 +118,42 @@ namespace PDFToExcel
             }
             return linearray;
         }
-        private static void ProfileRows(ref PDFTable table)
+        private static bool ProfileRows(ref PDFTable table)
         {
-            IEnumerable<PDFRow> datarows = table.Rows.Where(x => x.RowClass == PDFRowClass.data);
-            for (int col = 0; col < table.Columns.Length-1; col++)
+            bool headerAdjusted = false;
+            PDFRow headerRow = table.Rows.Where(x => x.RowClass == PDFRowClass.header).FirstOrDefault();
+            if (headerRow != null) headerAdjusted = 
+                    AdjustColumnsUsingHeader(ref table, headerRow.TextLines.Select(x => x.Box).ToArray());
+
+
+            PDFRow[] datarows = table.Rows.Where(x => x.RowClass == PDFRowClass.data).ToArray();
+            int numcolumns = table.Columns.Length;
+            while (datarows.Length < 2 && numcolumns > 1)
             {
-                IEnumerable<RectangleF> column = datarows.Select(x => x.TextLines[col].Box);
-                IEnumerable<RectangleF> nextcolumn = datarows.Select(x => x.TextLines[col+1].Box);
-                AdjustColumn(ref table, col, column, nextcolumn);
+                datarows = table.Rows.Where(x => x.RowClass == PDFRowClass.unknown && x.TextLines.Length == numcolumns).ToArray();
+                numcolumns--;
             }
-            int lastcol = table.Columns.Length - 1;
-            AdjustColumn(ref table, lastcol, datarows.Select(x => x.TextLines[lastcol].Box));
-            datarows = null;
+            if (datarows.Length == 0)
+            {
+                MessageBox.Show(string.Format("Unable to find any data in your table, aborting operation."),
+                    "No Data Found",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Exclamation);
+                return false;
+            }
+
+
+            //for (int col = 0; col < numcolumns-1; col++)
+            //{
+            //    IEnumerable<RectangleF> column = datarows.Select(x => x.TextLines[col].Box);
+            //    IEnumerable<RectangleF> nextcolumn = datarows.Select(x => x.TextLines[col+1].Box);
+            //    AdjustColumnsWithRows(ref table, col, column, nextcolumn);
+            //}
+            //int lastcol = table.Columns.Length - 1;
+            //AdjustColumnsWithRows(ref table, lastcol, datarows.Select(x => x.TextLines[lastcol].Box));
+            //datarows = null;
+
+
 
             IEnumerable<PDFRow> unknownrows = table.Rows.Where(x => x.RowClass == PDFRowClass.unknown);
             foreach (PDFRow row in unknownrows)
@@ -152,20 +176,63 @@ namespace PDFToExcel
                         row.ColumnIndices[i] = -indices.Count();
                     }
                 }
-                row.RowClass = row.ColumnIndices.Any(x => x < 0) ? PDFRowClass.delete : PDFRowClass.data;
+                row.RowClass = 
+                    row.ColumnIndices.Any(x => x < 0) || 
+                    row.ColumnIndices.Length > row.ColumnIndices.Distinct().Count() ? // no column indices can be the same
+                    PDFRowClass.delete : 
+                    PDFRowClass.data;
             }
+            return true;
         }
-        private static void AdjustColumn(ref PDFTable table, int col, 
-            IEnumerable<RectangleF> columnData, IEnumerable<RectangleF> nextcolumnData = null )
+
+        private static bool AdjustColumnsUsingHeader(ref PDFTable table, RectangleF[] headerBox)
+        {
+            try
+            {
+                for (int col = 0; col < table.Columns.Length - 1; col++)
+                {
+                    table.VDivBuffers[col, 0] = table.Columns[col].Box.Right;
+                    table.VDivBuffers[col, 1] = headerBox[col + 1].Left;
+
+                    float colx = headerBox[col].Left - 1;
+                    table.Columns[col].Box = new RectangleF
+                        (
+                            colx,
+                            table.Box.Top,
+                            headerBox[col].Right - colx + 1,
+                            table.Box.Height
+                        );
+                }
+                int endcol = table.Columns.Length - 1;
+                float endcolx = headerBox[endcol].Left - 1;
+                table.Columns[endcol].Box = new RectangleF
+                        (
+                            endcolx,
+                            table.Box.Top,
+                            headerBox[endcol].Right - endcolx + 1,
+                            table.Box.Height
+                        );
+
+            }
+            catch
+            {
+                return false;
+            }
+            
+            return true;           
+        }
+
+        private static void AdjustColumnsWithRows(ref PDFTable table, int col, 
+            IEnumerable<RectangleF> columnData, IEnumerable<RectangleF> nextColumnData = null )
         {
             if (columnData.All(box => box.Left == columnData.First().Left))
             {
                 table.Columns[col].HorizontalAlignment = HorizontalAlignment.Left;
                 float colx = columnData.First().Left - 1;
-                if (nextcolumnData != null)
+                if (nextColumnData != null)
                 {
                     table.VDivBuffers[col, 0] = columnData.Max(box => box.Right);
-                    table.VDivBuffers[col, 1] = nextcolumnData.Min(box => box.Left);
+                    table.VDivBuffers[col, 1] = nextColumnData.Min(box => box.Left);
                 }
                 table.Columns[col].Box = new RectangleF
                     (
@@ -186,7 +253,7 @@ namespace PDFToExcel
                         columnData.First().Right - colx,
                         table.Box.Height
                     );
-                if (nextcolumnData != null)
+                if (nextColumnData != null)
                 {
                     table.VDivBuffers[col, 0] = table.Columns[col].Box.Right;
                     table.VDivBuffers[col, 1] = table.Columns[col].Box.Right + 2;
@@ -197,10 +264,10 @@ namespace PDFToExcel
             {
                 table.Columns[col].HorizontalAlignment = HorizontalAlignment.Center;
                 float colx = col == 0 ? table.Box.Left : table.VDivBuffers[col - 1, 1];
-                if (nextcolumnData != null)
+                if (nextColumnData != null)
                 {
                     table.VDivBuffers[col, 0] = columnData.Max(box => box.Right);
-                    table.VDivBuffers[col, 1] = nextcolumnData.Min(box => box.Left);
+                    table.VDivBuffers[col, 1] = nextColumnData.Min(box => box.Left);
                 }
                 table.Columns[col].Box = new RectangleF
                     (
@@ -211,6 +278,8 @@ namespace PDFToExcel
                     );
             }
         }
+
+        
 
         private static PDFTable BuildTable(IEnumerable<RectangleF> boxes, int numcolumns)
         {
@@ -318,20 +387,14 @@ namespace PDFToExcel
 
         public override string ToString()
         {
-            StringBuilder sb = new StringBuilder();
-            int index = 0;
-            for (int i = 0; i < ColumnIndices.Max(x => x); i++)
+            if (ColumnIndices.Any(x => x < 0)) return string.Join<TextLine>("\t", TextLines);
+            int num = ColumnIndices.Max();
+            string[] array = new string[num+1];
+            for (int i = 0; i < ColumnIndices.Length; i++)
             {
-                if (ColumnIndices[index++] == i)
-                {
-                    sb.Append(TextLines[i].ToString(false)).Append('\t');
-                }
-                else
-                {
-                    sb.Append('\t');
-                }
+                array[ColumnIndices[i]] = TextLines[i].ToString(false);
             }
-            return sb.ToString();
+            return string.Join("\t", array);
         }
 
         public event PropertyChangedEventHandler PropertyChanged;
@@ -465,7 +528,7 @@ namespace PDFToExcel
                 (
                     boxx,
                     TextChars.Min(x => x.Box.Top),
-                    (TextChars.Last().Box.Right - boxx) + TextChars.Last().SpaceAfter,
+                    (TextChars.Last().Box.Right - boxx),
                     TextChars.Max(x => x.Box.Height)
                 );
             }
@@ -476,7 +539,7 @@ namespace PDFToExcel
         public void Trim()
         {
             int count = TextChars.Length - 1;
-            while (count > -1 && TextChars[count].Char == ' ') count--;
+            while (count > 0 && TextChars[count].Char == ' ') count--;
             TextChars[count].SpaceAfter = 0;
             TextChars = TextChars.Take(count+1).ToArray();
         }
@@ -564,7 +627,7 @@ namespace PDFToExcel
                     chars.Add(tc);
                     if (startofset)
                     {
-                        line = new TextLine();
+                        line = new TextLine { LineSpace = LineSpace };
                         startofset = false;
                     }
                     if (tc.SpaceAfter > (tc.SpaceWidth + tol) && count > 0)
@@ -751,51 +814,79 @@ namespace PDFToExcel
         {
             List<TextLine> TLList = new List<TextLine>();
             List<TextLine> MergeQueue = new List<TextLine>();
-            TextLine lineA = null;
+            TextLine lineAbove = null;
 
             foreach (IGrouping<float,TextChar> line in lines)
             {
                 // create new textline
-                TextLine lineB = new TextLine
+                TextLine lineBelow = new TextLine
                 {
                     TextChars = line.OrderBy(tc => tc.Box.Left).ToArray()
                 };
                 
 
                 // set the SpaceAfter property (now that chars are ordered)
-                for (int i = 0; i < lineB.TextChars.Length-1; i++)
+                for (int i = 0; i < lineBelow.TextChars.Length-1; i++)
                 {
-                    float x1 = lineB.TextChars[i].Box.Right;
-                    float x2 = lineB.TextChars[i + 1].Box.Left;
-                    lineB.TextChars[i].SpaceAfter = (float)Math.Round(x2 - x1,1);
+                    float x1 = lineBelow.TextChars[i].Box.Right;
+                    float x2 = lineBelow.TextChars[i + 1].Box.Left;
+                    lineBelow.TextChars[i].SpaceAfter = (float)Math.Round(x2 - x1,1);
                 }
 
-                // if there's a line above...and it overlaps vertically...
-                // add them to merge queue
-                if (lineA != null)
+                if (lineAbove != null) // if the lineAbove has been added...
                 {
-                    lineA.LineSpace = lineB.Box.Bottom - lineA.Box.Bottom;
-                    if (lineA.LineSpace <= lineB.Box.Height + 1) // +1 is a threshold value - distance between lines to consider merging
+                    lineAbove.LineSpace = lineBelow.Box.Bottom - lineAbove.Box.Bottom;
+                    if (MergeQueue.Count == 0) // if there are no queued merges
                     {
-                        if (MergeQueue.Count == 0) MergeQueue.AddRange(lineA.Split());
-                        MergeQueue.AddRange(lineB.Split());
+                        if (lineAbove.LineSpace <= lineBelow.Box.Height + 1) // if overlaps add lineAbove to queue
+                        {
+                            MergeQueue.AddRange(lineAbove.Split());
+                        }
+                        else // add non-overlapping lineAbove
+                        {
+                            TLList.Add(lineAbove);
+                        }
                     }
-                    else if (MergeQueue.Count > 0) // no overlap but have to write and clear merge queue before moving on
+                    else // if there are queued merges, add line above to queue if it overlaps
                     {
-                        TLList.AddRange(MergeLines(MergeQueue));
-                        MergeQueue.Clear();
-                    }
-                    else
-                    {
-                        TLList.Add(lineA);
+                        if (MergeQueue.Last().LineSpace <= lineAbove.Box.Height + 1)
+                        {
+                            MergeQueue.AddRange(lineAbove.Split());
+                        }
+                        else // else merge and then add the non-overlapping lineAbove
+                        {
+                            TLList.AddRange(MergeLines(MergeQueue));
+                            MergeQueue.Clear();
+                            if (lineAbove.LineSpace <= lineBelow.Box.Height + 1) // if overlaps add lineAbove to queue
+                            {
+                                MergeQueue.AddRange(lineAbove.Split());
+                            }
+                            else // add non-overlapping lineAbove
+                            {
+                                TLList.Add(lineAbove);
+                            }
+                        }
                     }
                 }
-                lineA = lineB;
+                lineAbove = lineBelow;
             }
-
             //add the last remaining line to TLList
-            TLList.Add(lineA);
-
+            if (MergeQueue.Count == 0)
+            {
+                TLList.Add(lineAbove);
+            }
+            else if (MergeQueue.Last().LineSpace <= lineAbove.Box.Height + 1)
+            {
+                MergeQueue.AddRange(lineAbove.Split());
+                TLList.AddRange(MergeLines(MergeQueue));
+                MergeQueue.Clear();
+            }
+            else
+            {
+                TLList.AddRange(MergeLines(MergeQueue));
+                MergeQueue.Clear();
+                TLList.Add(lineAbove);
+            }
             return TLList.ToArray();
         }
 

@@ -1,4 +1,5 @@
 ﻿using System;
+//using System.Drawing;
 using System.IO;
 using System.Runtime.InteropServices;
 using System.Text;
@@ -6,13 +7,11 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Interop;
 using System.Windows.Media;
+using Rectangle = System.Windows.Shapes.Rectangle;
 
 namespace ABUtils
-
 {
-    /// <summary>
-    /// Interaction logic for ABModalDialog.xaml
-    /// </summary>
+
     public partial class ABModalDialog : Window
     {
         private bool stopClose;
@@ -108,14 +107,81 @@ namespace ABUtils
         }
     }
 
-    class CheckListDialog : ABModalDialog
+    class OKCancelDialog : ABModalDialog
+    {
+        public OKCancelDialog(string title="OK or Cancel") : base(title, false)
+        {
+            SetupGrid();
+            AddOkCancelButtons();
+        }
+
+        private void SetupGrid()
+        {
+            RowDefinition stack_cd = new RowDefinition();
+            RowDefinition ok_cd = new RowDefinition();
+            grid.RowDefinitions.Add(stack_cd);
+            grid.RowDefinitions.Add(ok_cd);
+            Grid.SetRow(stack_pnl, 0);
+            Rectangle rect = new Rectangle
+            {
+                Fill = Brushes.AliceBlue
+            };
+            Grid.SetRow(rect, 1); 
+        }
+        private void AddOkCancelButtons()
+        {
+            DockPanel button_dp = new DockPanel
+            {
+                LastChildFill = false,
+                Margin = new Thickness(10),
+                Width = 150,
+                HorizontalAlignment = HorizontalAlignment.Right
+            };
+
+            Button okbtn = new Button
+            {
+                Content = "OK",
+                Width = 65,
+                Height = 30,
+                Margin = new Thickness(2),
+                IsDefault = true,
+                VerticalAlignment = VerticalAlignment.Center
+            };
+            Button cancelbtn = new Button
+            {
+                Content = "CANCEL",
+                Width = 65,
+                Height = 30,
+                Margin = new Thickness(2),
+                IsCancel = true,
+                VerticalAlignment = VerticalAlignment.Center
+            };
+
+            okbtn.Click += Okbtn_Click;
+
+            button_dp.Children.Add(okbtn);
+            button_dp.Children.Add(cancelbtn);
+            DockPanel.SetDock(cancelbtn, Dock.Right);
+            DockPanel.SetDock(okbtn, Dock.Right);
+            Grid.SetRow(button_dp, 1);
+            grid.Children.Add(button_dp);
+        }
+        private void Okbtn_Click(object sender, RoutedEventArgs e)
+        {
+            DialogResult = true;
+            Close();
+        }
+    }
+
+
+    class CheckListDialog : OKCancelDialog
     {
         public ListBox CheckList { get; set; }
 
         public CheckListDialog(string[] checklist,
                                 string message = "Do something to the following items?",
-                                string title = "Are you Suuuure...?", bool required = false) :
-                                base(title, required)
+                                string title = "Are you Suuuure...?") :
+                                base(title)
         {
             Width = 300;
             Height = Double.NaN;
@@ -141,44 +207,8 @@ namespace ABUtils
 
             stack_pnl.Children.Add(message_tb);
             stack_pnl.Children.Add(CheckList);
-
-            AddOkCancelButtons();
         }
 
-        private void AddOkCancelButtons()
-        {
-            DockPanel button_dp = new DockPanel
-            {
-                LastChildFill = false,
-                Margin = new Thickness(10),
-                Width = 150,
-                HorizontalAlignment = HorizontalAlignment.Right
-            };
-
-            Button okbtn = new Button
-            {
-                Content = "OK",
-                Width = 60,
-                Margin = new Thickness(2),
-                IsDefault = true
-            };
-            Button cancelbtn = new Button
-            {
-                Content = "CANCEL",
-                Width = 60,
-                Margin = new Thickness(2),
-                IsCancel = true
-            };
-
-            okbtn.Click += Okbtn_Click;
-
-            button_dp.Children.Add(okbtn);
-            button_dp.Children.Add(cancelbtn);
-            DockPanel.SetDock(cancelbtn, Dock.Right);
-            DockPanel.SetDock(okbtn, Dock.Right);
-
-            stack_pnl.Children.Add(button_dp);
-        }
         private void Okbtn_Click(object sender, RoutedEventArgs e)
         {
             DialogResult = true;

@@ -10,6 +10,6 @@
         ResizeMode="NoResize"
         Title="Window1" Height="96.306" Width="301.705">
     <Grid x:Name="grid">
-        <StackPanel x:Name="stack_pnl" HorizontalAlignment="Stretch" VerticalAlignment="Center"></StackPanel>
+        <StackPanel x:Name="stack_pnl" HorizontalAlignment="Stretch" VerticalAlignment="Top"></StackPanel>
     </Grid>
 </Window>

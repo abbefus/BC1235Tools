@@ -19,7 +19,7 @@ using Size = System.Drawing.Size;
 
 namespace PDFToExcel
 {
-    public static class PDFEngine
+    public class PDFEngine : IDisposable
     {
 
         //TODO:
@@ -29,21 +29,47 @@ namespace PDFToExcel
         //          by running through, gathering data and then prompting user with missing column (greatest VDivBuffer or first/last)
         //          by lowering the number of columns to the max found and proceeding
         //          by adjusting the tolerance so that a column separated by less than the default tolerance is found
-        //  4. trim RowData textlines (remove SpaceAfter Values so textline.ToString() doesn't print the trailing spaces)
-        //      or add an argument to the TextLine .ToString method that does this
 
-        public static PDFTable TabifyPDF(string pdfpath, int numcolumns=1, int? startpage=null, int? endpage=null, string headerstring=null)
+        private PDDocument _doc;
+        public PDDocument Doc
         {
-            PDDocument doc = PDDocument.load(pdfpath);
-            DecryptPDF(ref doc);
+            get { return _doc; }
+            set
+            {
+                _doc = value;
+                if (_doc.isEncrypted())
+                {
+                    if (!DecryptPDF())
+                    {
+                        Dispose();
+                    }
+                    else
+                    {
+                        Pages = new PageRange(Doc.getNumberOfPages());
+                    }
+                }
+            }
+        }
+        public PageRange Pages { get; private set; }
 
-            // turn user-intuitive pages (1-inclusive) into PDFBox intuitive pages (0-exclusive)
-            startpage = startpage > 0 ? startpage - 1 : null;
-            endpage = endpage >= startpage ? endpage : null;
+        public void OpenPDF(string pdfpath)
+        {
+            if (Doc != null) Dispose();
+            Doc = PDDocument.load(pdfpath);
+        }
+        public bool CheckDoc()
+        {
+            if (Doc != null && Pages != null) return true;
+            MessageBox.Show("There is no PDF document loaded.", "No PDF", MessageBoxButton.OK, MessageBoxImage.Error);
+            return false;
+        }
+        
+        public PDFTable TabifyPDF(int numcolumns=1)
+        {
+            if (!CheckDoc()) return null;
 
-            StrippedPDF pdf = StripPDF(ref doc, startpage, endpage);
-
-            doc.close();
+            //turn user-intuitive pages (1 - inclusive) into pdfbox page range (0 - exclusive)
+            StrippedPDF pdf = StripPDF(Pages.StartPage - 1, Pages.EndPage);
 
             // group data by the number of columns found (NumColumns found using spaceafter > spacewidth)
             IEnumerable<IGrouping<int, TextLine>> grps = pdf.Pages.Select(x => x.TextLines)
@@ -59,7 +85,7 @@ namespace PDFToExcel
             if (keys[0] != 0)
             {
                 //for now, prompt user and stop operation -- allows us to run on assumption that all columns are present
-                MessageBox.Show(string.Format("Unable to find {0} columns, aborting operation."),
+                MessageBox.Show(string.Format("Unable to find {0} columns, aborting operation.",numcolumns),
                     "Required Columns Not Found",
                     MessageBoxButton.OK,
                     MessageBoxImage.Exclamation);
@@ -295,20 +321,23 @@ namespace PDFToExcel
                 );
             return table;
         }
-
-        public static bool DecryptPDF(ref PDDocument doc)
+        public bool DecryptPDF()
         {
-            if (doc.isEncrypted())
+            if (Doc.isEncrypted())
             {
                 try
                 {
-                    doc.decrypt("");
-                    doc.setAllSecurityToBeRemoved(true);
+                    Doc.decrypt("");
+                    Doc.setAllSecurityToBeRemoved(true);
                     return true;
                 }
                 catch (Exception e)
                 {
-                    MessageBox.Show(string.Format("The document is encrypted, and we can't decrypt it.\r\n{0}", e.Message));
+                    MessageBox.Show(
+                        string.Format("Unable to decrypt this document.\r\n{0}", e.Message),
+                        "Unable to Decrypt",
+                        MessageBoxButton.OK,
+                        MessageBoxImage.Exclamation);
                     return false;
                 }
             }
@@ -317,22 +346,21 @@ namespace PDFToExcel
                 return true;
             }
         }
-        private static StrippedPDF StripPDF(ref PDDocument doc, int? startpage = null, int? endpage = null, Rectangle2D parseregion = null)
+        private StrippedPDF StripPDF(int? startpage = null, int? endpage = null, Rectangle2D parseregion = null)
         {
             int start = startpage ?? 0;
-            int end = endpage ?? doc.getNumberOfPages();
-            java.util.ArrayList pages = GetPageRange(ref doc, start, end);  //potentially same as cat.getPageNodes().getKids()
+            int end = endpage ?? Doc.getNumberOfPages();
+            java.util.ArrayList pages = GetPageRange(start, end);  //potentially same as cat.getPageNodes().getKids()
             PDFStripper stripper = new PDFStripper();
             return stripper.stripPDF(pages);
         }
-
-        private static java.util.ArrayList GetPageRange(ref PDDocument doc, int start, int end)
+        private java.util.ArrayList GetPageRange(int start, int end)
         {
             java.util.ArrayList pages = new java.util.ArrayList();
 
             try
             {
-                PDDocumentCatalog cat = doc.getDocumentCatalog();
+                PDDocumentCatalog cat = Doc.getDocumentCatalog();
                 java.util.List catpages = cat.getAllPages();
 
                 for (int i = start; i < end; i++)
@@ -344,9 +372,15 @@ namespace PDFToExcel
             }
             catch
             {
-                throw new ArgumentOutOfRangeException("Page range not found in document");
+                throw new ArgumentOutOfRangeException("Page range not found in document.");
             }
             
+        }
+
+        public void Dispose()
+        {
+            Doc.close();
+            Pages = null;
         }
     }
 
@@ -698,6 +732,70 @@ namespace PDFToExcel
         }
     }     // a contiguous set of characters and associated metrics
 
+    public class PageRange
+    {
+        private int upperLimit = int.MaxValue;
+        private int lowerLimit = 1;
+        public int StartPage { get; private set; }
+        public int EndPage { get; private set; }
+
+        public PageRange(int numberOfPages, int startPage=1)
+        {
+            StartPage = startPage;
+            EndPage = numberOfPages;
+            upperLimit = numberOfPages;
+            lowerLimit = startPage;
+        }
+        
+        public bool SetStartPage(int start)
+        {
+            bool success = false;
+            if (ContainsPage(start) && EndPage >= start)
+            {
+                StartPage = start;
+                success = true;
+            }
+            return success;
+        }
+        public bool SetEndPage(int end)
+        {
+            bool success = false;
+            if (ContainsPage(end) && end >= StartPage)
+            {
+                EndPage = end;
+                success = true;
+            }
+            return success;
+        }
+        public bool SetPageRange(int start, int end)
+        {
+            bool success = false;
+            if (ContainsPage(start) && ContainsPage(end) && end >= start)
+            {
+                StartPage = start;
+                EndPage = end;
+                success = true;
+            }
+            return success;
+        }
+
+        public bool ContainsPage(int value)
+        {
+            return lowerLimit <= value && upperLimit >= value;
+        }
+        public override string ToString()
+        {
+            if (StartPage == EndPage)
+            {
+                return string.Format("page {0}", StartPage);
+            }
+            else
+            {
+                return string.Format("pages {0}-{1}", StartPage, EndPage);
+            }
+            
+        }
+    }
     public class StrippedPDF
     {
         public StrippedPDFPage[] Pages { get; set; }
@@ -780,7 +878,10 @@ namespace PDFToExcel
 
         private static TextChar BuildTextChar(TextPosition tp, PDGraphicsState gstate)
         {
-            if (tp.getCharacter().Length != 1) throw new Exception("Textposition does not contain 1 character.");
+            if (tp.getCharacter().Length != 1)
+            {
+                throw new Exception("Textposition does not contain 1 character.");
+            }
 
             TextChar tc = new TextChar();
             tc.Char = tp.getCharacter()[0];

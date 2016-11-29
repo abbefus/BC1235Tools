@@ -16,7 +16,6 @@ using System.Windows.Data;
 using System.Windows.Input;
 using System.Windows.Media;
 using RectangleF = System.Drawing.RectangleF;
-using PointF = System.Drawing.PointF;
 
 namespace PDFToExcel
 {
@@ -58,43 +57,20 @@ namespace PDFToExcel
 
         private void InitializeStaticComboBoxes()
         {
-            for (int i=2; i<=20;i++)
-            {
-                numcolumns_rgc.Items.Add(new RibbonGalleryItem { Content = i.ToString() });
-            }
-            numcolumns_rg.SelectedValue = ((RibbonGalleryItem)numcolumns_rgc.Items[0]).Content;
+            //for (int i=2; i<=20;i++)
+            //{
+            //    numcolumns_rgc.Items.Add(new RibbonGalleryItem { Content = i.ToString() });
+            //}
+            //numcolumns_rg.SelectedValue = ((RibbonGalleryItem)numcolumns_rgc.Items[0]).Content;
         }
 
         private void openpdf_btn_Click(object sender, RoutedEventArgs e)
         {
-            OpenFileDialog openFileDialog = new OpenFileDialog();
-            if (openFileDialog.ShowDialog(this) == true)
-            {
-                // SHOW DIALOG FOR SPECIFYING COLUMNS AND PAGE RANGE HERE
-
-
-                PDFTextLines.Clear();
-
-                int start = string.IsNullOrWhiteSpace(startpage_tb.Text) ? 0 : int.Parse(startpage_tb.Text);
-                int end = string.IsNullOrWhiteSpace(startpage_tb.Text) ? 0 : int.Parse(endpage_tb.Text);
-
-                PDFTable pdftable = PDFEngine.TabifyPDF(openFileDialog.FileName, int.Parse(numcolumns_rg.SelectedValue.ToString()), start, end);
-                if (pdftable != null)
-                {
-                    foreach (PDFRow row in pdftable.Rows)
-                    {
-                        PDFTextLines.Add(row);
-                    }
-                    if (PDFTextLines.Count > 0)
-                    {
-                        UpdateStatus(StatusType.Success, string.Format("Processed {0} pages, found {1} lines.",
-                        start, end,
-                        PDFTextLines.Count()));
-                        return;
-                    }
-                }
-                UpdateStatus(StatusType.Failure, "Error or no data in pdf.");
-            }
+            //OpenFileDialog openFileDialog = new OpenFileDialog();
+            //if (openFileDialog.ShowDialog(this) == true)
+            //{
+            //    PDFTextLines.Clear();
+            //}
         }
 
 
@@ -235,6 +211,47 @@ namespace PDFToExcel
         private void purgedeleted_btn_Click(object sender, RoutedEventArgs e)
         {
             PDFTextLines.RemoveAll<PDFRow>(x => x.RowClass == PDFRowClass.delete);
+        }
+
+        private void tableExtract_btn_Click(object sender, RoutedEventArgs e)
+        {
+            OpenFileDialog openFileDialog = new OpenFileDialog();
+            if (openFileDialog.ShowDialog(this) == true)
+            {
+                PDFTextLines.Clear();
+                using (PDFEngine engine = new PDFEngine())
+                {
+                    engine.OpenPDF(openFileDialog.FileName);
+                    PDFTableExtractDialog ted = new PDFTableExtractDialog(engine.Pages);
+                    ted.Owner = this;
+                    if (ted.ShowDialog() == true)
+                    {
+                        engine.Pages.SetPageRange(ted.StartPage, ted.EndPage);
+
+                        PDFTable pdftable = engine.TabifyPDF(ted.NumColumns);
+
+                        if (pdftable != null)
+                        {
+                            foreach (PDFRow row in pdftable.Rows)
+                            {
+                                PDFTextLines.Add(row);
+                            }
+                            if (PDFTextLines.Count > 0)
+                            {
+                                UpdateStatus(StatusType.Success, string.Format("Processed {0}, found {1} lines.",
+                                engine.Pages,
+                                PDFTextLines.Count()));
+                                return;
+                            }
+                        }
+                        UpdateStatus(StatusType.Failure, "Error or no data in pdf.");
+                    }
+                   
+                }
+
+
+            }
+            
         }
     }
     public class ConsolWriter : TextWriter

@@ -102,38 +102,17 @@
             </r:Ribbon.ApplicationMenu>
             <r:RibbonTab Header="Table Extract" ContextMenu="{x:Null}">
                 
-                <r:RibbonGroup Header="Import" x:Name="import_grp" ContextMenu="{x:Null}">
+                <r:RibbonGroup Header="Extract Text" x:Name="import_grp" ContextMenu="{x:Null}">
                     <r:RibbonButton x:Name="openpdf_btn" Label="Open PDF" LargeImageSource="Images/file-extension-pdf-icon.png" 
                                     ContextMenu="{x:Null}" Click="openpdf_btn_Click"/>
                 </r:RibbonGroup>
 
-                <r:RibbonGroup Header="Import Settings" x:Name="table_grp" ContextMenu="{x:Null}">
-                    <DockPanel Margin="0,10,0,0">
-                        <TextBlock Text="Columns:" Width="65" TextAlignment="Right" VerticalAlignment="Center"></TextBlock>
-                        <r:RibbonComboBox x:Name="numcolumns_cb" SelectionBoxWidth="20" ToolTip="Number of Columns in Table" Margin="6.5,0,0,0" VerticalAlignment="Center">
-                            <r:RibbonGallery x:Name="numcolumns_rg" SelectedValuePath="Content">
-                                <r:RibbonGalleryCategory x:Name="numcolumns_rgc" />
-                            </r:RibbonGallery>
-                        </r:RibbonComboBox>
-                    </DockPanel>
-                    <DockPanel VerticalAlignment="Center">
-                        <TextBlock Text="Page Range:" Width="65" TextAlignment="Right" VerticalAlignment="Center"></TextBlock>
-                        <r:RibbonTextBox x:Name="startpage_tb" ToolTip="Enter start page" Margin="4,0,0,0" VerticalAlignment="Center" 
-                                         TextBoxWidth="30" TextAlignment="Center" PreviewTextInput="page_tb_PreviewTextInput"/>
-                        <TextBlock Text=" - " VerticalAlignment="Center"></TextBlock>
-                        <r:RibbonTextBox x:Name="endpage_tb" ToolTip="Enter end page" VerticalAlignment="Center"
-                                         TextBoxWidth="30" TextAlignment="Center" PreviewTextInput="page_tb_PreviewTextInput"/>
-                    </DockPanel>
-                </r:RibbonGroup>
-
-                <r:RibbonGroup Header="Output" x:Name="output_grp" ContextMenu="{x:Null}">
+                <r:RibbonGroup Header="Extract Table" x:Name="table_grp" ContextMenu="{x:Null}">
+                    <r:RibbonButton x:Name="tableExtract_btn" Label="Extract Table" LargeImageSource="Images/page-acrobat-table.png" 
+                                    ContextMenu="{x:Null}" Click="tableExtract_btn_Click"/>
                     <r:RibbonButton x:Name="savexls_btn" Label="Export Table" LargeImageSource="Images/export-excel-icon.png" 
                                     ContextMenu="{x:Null}" Click="savexls_btn_Click"/>
                     <r:RibbonCheckBox x:Name="includehdr_chk" Label="Include Header" IsChecked="True"/>
-                </r:RibbonGroup>
-                
-                <r:RibbonGroup Header="Table Management" x:Name="tablemanage_grp" ContextMenu="{x:Null}">
-                    
                     <r:RibbonButton x:Name="setheader_btn" Label="Set As Header" LargeImageSource="Images/table-header-icon.png"
                                     ContextMenu="{x:Null}" Click="setheader_btn_Click"
                                     IsEnabled="{Binding ElementName=datagrid, Path=SelectedItems.Count, Converter={StaticResource Int2Boolean}}"/>
@@ -146,7 +125,6 @@
                     <r:RibbonButton x:Name="purgedeleted_btn" Label="Purge Deleted" LargeImageSource="Images/sweep-table-icon.png"
                                     ContextMenu="{x:Null}" Click="purgedeleted_btn_Click"/>
                 </r:RibbonGroup>
-
             </r:RibbonTab>
             
             

@@ -219,6 +219,7 @@
     </Compile>
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="Classes\PDFExtractDialog.cs" />
     <Compile Include="Properties\AssemblyInfo.cs">
       <SubType>Code</SubType>
     </Compile>
@@ -284,6 +285,9 @@
   </ItemGroup>
   <ItemGroup>
     <Resource Include="Images\table-header-icon.png" />
+  </ItemGroup>
+  <ItemGroup>
+    <Resource Include="Images\page-acrobat-table.png" />
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
   <Target Name="AfterResolveReferences">

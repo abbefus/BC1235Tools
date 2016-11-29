@@ -289,6 +289,9 @@
   <ItemGroup>
     <Resource Include="Images\page-acrobat-table.png" />
   </ItemGroup>
+  <ItemGroup>
+    <Resource Include="Images\pdf-table-icon.png" />
+  </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
   <Target Name="AfterResolveReferences">
     <ItemGroup>

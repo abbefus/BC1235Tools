@@ -109,6 +109,8 @@ namespace ABUtils
 
     class OKCancelDialog : ABModalDialog
     {
+        protected DockPanel ButtonDP { get; set; }
+
         public OKCancelDialog(string title="OK or Cancel") : base(title, false)
         {
             SetupGrid();
@@ -130,7 +132,7 @@ namespace ABUtils
         }
         private void AddOkCancelButtons()
         {
-            DockPanel button_dp = new DockPanel
+            ButtonDP = new DockPanel
             {
                 LastChildFill = false,
                 Margin = new Thickness(10),
@@ -159,12 +161,12 @@ namespace ABUtils
 
             okbtn.Click += Okbtn_Click;
 
-            button_dp.Children.Add(okbtn);
-            button_dp.Children.Add(cancelbtn);
+            ButtonDP.Children.Add(okbtn);
+            ButtonDP.Children.Add(cancelbtn);
             DockPanel.SetDock(cancelbtn, Dock.Right);
             DockPanel.SetDock(okbtn, Dock.Right);
-            Grid.SetRow(button_dp, 1);
-            grid.Children.Add(button_dp);
+            Grid.SetRow(ButtonDP, 1);
+            grid.Children.Add(ButtonDP);
         }
         private void Okbtn_Click(object sender, RoutedEventArgs e)
         {

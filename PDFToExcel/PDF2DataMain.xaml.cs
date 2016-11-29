@@ -216,13 +216,14 @@ namespace PDFToExcel
         private void tableExtract_btn_Click(object sender, RoutedEventArgs e)
         {
             OpenFileDialog openFileDialog = new OpenFileDialog();
+            openFileDialog.Filter = "PDF Files|*.pdf";
             if (openFileDialog.ShowDialog(this) == true)
             {
                 PDFTextLines.Clear();
                 using (PDFEngine engine = new PDFEngine())
                 {
                     engine.OpenPDF(openFileDialog.FileName);
-                    PDFTableExtractDialog ted = new PDFTableExtractDialog(engine.Pages);
+                    PDFTableExtractDialog ted = new PDFTableExtractDialog(engine.Pages,string.Format("Extract Table From {0}",Path.GetFileName(openFileDialog.FileName)));
                     ted.Owner = this;
                     if (ted.ShowDialog() == true)
                     {

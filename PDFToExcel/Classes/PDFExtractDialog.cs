@@ -12,33 +12,59 @@ namespace PDFToExcel
         public int StartPage { get; set; }
         public int EndPage { get; set; }
         public int NumColumns { get; set; }
-        public PDFTableExtractDialog(PageRange range) : base ("Extract PDF Table")
+        public PDFTableExtractDialog(PageRange range, string title= "Extract PDF Table") : base (title)
         {
-            Width = 300;
+            Width = 500;
             Height = Double.NaN;
-            SizeToContent = SizeToContent.WidthAndHeight;
+            SizeToContent = SizeToContent.Height;
             AddComboBoxes(range.StartPage, range.EndPage);
+
+            ColumnDefinition cd = new ColumnDefinition
+            {
+                Width = new GridLength(250)
+            };
+            grid.ColumnDefinitions.Add(cd);
+            grid.ColumnDefinitions.Add(new ColumnDefinition());
+            Grid.SetColumn(ButtonDP, 1);
         }
 
         private void AddComboBoxes(int start, int end)
         {
-            DockPanel startpage_dp = new DockPanel
-            {
-                LastChildFill = false,
-                Margin = new Thickness(5, 5, 10, 5),
-                HorizontalAlignment = HorizontalAlignment.Right
-            };
+            StackPanel labels_sp = new StackPanel();
+            Grid.SetColumn(labels_sp, 0);
             TextBlock startLabel_tb = new TextBlock
             {
                 Text = "Table starts at page:",
-                Margin = new Thickness(10)
+                Margin = new Thickness(10, 13, 0, 10),
+                Height = 25,
+                HorizontalAlignment = HorizontalAlignment.Right
             };
+            TextBlock endLabel_tb = new TextBlock
+            {
+                Text = "Table ends at page:",
+                Margin = new Thickness(10, 10, 0, 10),
+                Height = 25,
+                HorizontalAlignment = HorizontalAlignment.Right
+            };
+            TextBlock colLabel_tb = new TextBlock
+            {
+                Text = "Number of columns:",
+                Margin = new Thickness(10, 10, 0, 10),
+                Height = 25,
+                HorizontalAlignment = HorizontalAlignment.Right
+            };
+
+            StackPanel combox_sp = new StackPanel();
+            Grid.SetColumn(combox_sp, 1);
+            
             ComboBox start_cb = new ComboBox
             {
                 Width = 50,
                 Height = 25,
                 IsReadOnly = false,
                 IsEditable = false,
+                Margin = new Thickness(5,10,10,10),
+                HorizontalAlignment = HorizontalAlignment.Left
             };
             Binding startBinding = new Binding
             {
@@ -47,27 +73,17 @@ namespace PDFToExcel
                 Mode = BindingMode.OneWayToSource,
                 UpdateSourceTrigger = UpdateSourceTrigger.PropertyChanged,
                 NotifyOnTargetUpdated = true,
-                Converter = new GenericConverter()
             };
             start_cb.SetBinding(ComboBox.SelectedValueProperty, startBinding);
 
-            DockPanel endpage_dp = new DockPanel
-            {
-                LastChildFill = false,
-                Margin = new Thickness(5,5,10,5),
-                HorizontalAlignment = HorizontalAlignment.Right
-            };
-            TextBlock endLabel_tb = new TextBlock
-            {
-                Text = "Table ends at page:",
-                Margin = new Thickness(10)
-            };
             ComboBox end_cb = new ComboBox
             {
                 Width = 50,
                 Height = 25,
                 IsReadOnly = false,
                 IsEditable = false,
+                Margin = new Thickness(5,10,10,10),
+                HorizontalAlignment = HorizontalAlignment.Left
             };
             Binding endBinding = new Binding
             {
@@ -76,27 +92,17 @@ namespace PDFToExcel
                 Mode = BindingMode.OneWayToSource,
                 UpdateSourceTrigger = UpdateSourceTrigger.PropertyChanged,
                 NotifyOnTargetUpdated = true,
-                Converter = new GenericConverter()
             };
             end_cb.SetBinding(ComboBox.SelectedValueProperty, endBinding);
 
-            DockPanel colpage_dp = new DockPanel
-            {
-                LastChildFill = false,
-                Margin = new Thickness(5, 5, 10, 5),
-                HorizontalAlignment = HorizontalAlignment.Right
-            };
-            TextBlock colLabel_tb = new TextBlock
-            {
-                Text = "Number of columns:",
-                Margin = new Thickness(10)
-            };
             ComboBox col_cb = new ComboBox
             {
                 Width = 50,
                 Height = 25,
                 IsReadOnly = false,
                 IsEditable = false,
+                Margin = new Thickness(5,10,10,10),
+                HorizontalAlignment = HorizontalAlignment.Left
             };
             Binding colBinding = new Binding
             {
@@ -105,7 +111,6 @@ namespace PDFToExcel
                 Mode = BindingMode.OneWayToSource,
                 UpdateSourceTrigger = UpdateSourceTrigger.PropertyChanged,
                 NotifyOnTargetUpdated = true,
-                Converter = new GenericConverter()
             };
             col_cb.SetBinding(ComboBox.SelectedValueProperty, colBinding);
 
@@ -125,17 +130,16 @@ namespace PDFToExcel
             col_cb.SelectedIndex = 0;
 
 
-            startpage_dp.Children.Add(startLabel_tb);
-            startpage_dp.Children.Add(start_cb);
-            endpage_dp.Children.Add(endLabel_tb);
-            endpage_dp.Children.Add(end_cb);
-            colpage_dp.Children.Add(colLabel_tb);
-            colpage_dp.Children.Add(col_cb);
+            combox_sp.Children.Add(start_cb);
+            combox_sp.Children.Add(end_cb);
+            combox_sp.Children.Add(col_cb);
 
+            labels_sp.Children.Add(startLabel_tb);
+            labels_sp.Children.Add(endLabel_tb);
+            labels_sp.Children.Add(colLabel_tb);
 
-            stack_pnl.Children.Add(startpage_dp);
-            stack_pnl.Children.Add(endpage_dp);
-            stack_pnl.Children.Add(colpage_dp);
+            grid.Children.Add(combox_sp);
+            grid.Children.Add(labels_sp);
         }
 
     }

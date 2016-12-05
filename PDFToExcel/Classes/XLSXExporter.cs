@@ -73,12 +73,18 @@ namespace ABUtils
         {
             if (!Disposed && ActiveWorksheet != null)
             {
-                //for (int m = 0; m < row.Length; m++)
-                //{
-                //    ActiveWorksheet.Cells[rowindex, m + 1].Value = row[m];
-                //}
                 ExcelRange range = ActiveWorksheet.Cells[rowindex, columnindex];
                 range.LoadFromArrays(Utils.AsEnumerable(row));
+                return true;
+            }
+            return false;
+        }
+        public bool UpdateRows(int rowindex, IEnumerable<object[]> row, int columnindex = 1)
+        {
+            if (!Disposed && ActiveWorksheet != null)
+            {
+                ExcelRange range = ActiveWorksheet.Cells[rowindex, columnindex];
+                range.LoadFromArrays(row);
                 return true;
             }
             return false;

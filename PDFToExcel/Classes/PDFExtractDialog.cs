@@ -56,15 +56,17 @@ namespace PDFToExcel
 
             StackPanel combox_sp = new StackPanel();
             Grid.SetColumn(combox_sp, 1);
-            
+
             ComboBox start_cb = new ComboBox
             {
                 Width = 50,
                 Height = 25,
                 IsReadOnly = false,
                 IsEditable = false,
-                Margin = new Thickness(5,10,10,10),
-                HorizontalAlignment = HorizontalAlignment.Left
+                Margin = new Thickness(5, 10, 10, 10),
+                HorizontalAlignment = HorizontalAlignment.Left,
+                IsTabStop = true,
+                TabIndex = 0
             };
             Binding startBinding = new Binding
             {
@@ -83,7 +85,9 @@ namespace PDFToExcel
                 IsReadOnly = false,
                 IsEditable = false,
                 Margin = new Thickness(5,10,10,10),
-                HorizontalAlignment = HorizontalAlignment.Left
+                HorizontalAlignment = HorizontalAlignment.Left,
+                IsTabStop = true,
+                TabIndex = 1
             };
             Binding endBinding = new Binding
             {
@@ -102,7 +106,9 @@ namespace PDFToExcel
                 IsReadOnly = false,
                 IsEditable = false,
                 Margin = new Thickness(5,10,10,10),
-                HorizontalAlignment = HorizontalAlignment.Left
+                HorizontalAlignment = HorizontalAlignment.Left,
+                IsTabStop = true,
+                TabIndex = 2
             };
             Binding colBinding = new Binding
             {

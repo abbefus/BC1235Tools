@@ -52,27 +52,7 @@ namespace PDFToExcel
             grid.DataContext = this;
             PDFTextLines = new ObservableCollection<PDFRow>();
             datagrid.DataContext = PDFTextLines;
-            InitializeStaticComboBoxes();
         }
-
-        private void InitializeStaticComboBoxes()
-        {
-            //for (int i=2; i<=20;i++)
-            //{
-            //    numcolumns_rgc.Items.Add(new RibbonGalleryItem { Content = i.ToString() });
-            //}
-            //numcolumns_rg.SelectedValue = ((RibbonGalleryItem)numcolumns_rgc.Items[0]).Content;
-        }
-
-        private void openpdf_btn_Click(object sender, RoutedEventArgs e)
-        {
-            //OpenFileDialog openFileDialog = new OpenFileDialog();
-            //if (openFileDialog.ShowDialog(this) == true)
-            //{
-            //    PDFTextLines.Clear();
-            //}
-        }
-
 
         public enum StatusType
         {
@@ -169,12 +149,11 @@ namespace PDFToExcel
                         int row = 1;
                         if (includehdr_chk.IsChecked ?? true)
                         {
-                            //FUCKING NOPE! --------------------------------------------------------------------------------------------
                             owb.UpdateRow(row++, PDFTextLines.Where(x => x.RowClass == PDFRowClass.header).First().ToString().Split('\t'));
                         }
                         foreach (PDFRow classedpdf in PDFTextLines.Where(x => x.RowClass == PDFRowClass.data))
                         {
-                            owb.UpdateRow(row++, classedpdf.ToString().Split('\t'));
+                            owb.UpdateRow(row++,classedpdf.ColumnValues.Select(x => x == null ? "" : x.ToString()).ToArray());
                         }
                         owb.ActiveWorksheet.Cells.AutoFitColumns();
                         owb.Save();
@@ -227,8 +206,8 @@ namespace PDFToExcel
                     ted.Owner = this;
                     if (ted.ShowDialog() == true)
                     {
+                        // tabify selected page range
                         engine.Pages.SetPageRange(ted.StartPage, ted.EndPage);
-
                         PDFTable pdftable = engine.TabifyPDF(ted.NumColumns);
 
                         if (pdftable != null)
